@@ -3,6 +3,7 @@ import { ChartNoAxesColumn, House, Plus, User, WalletCards } from "lucide-react"
 import { Toast, spring } from "./components/ui";
 import { haptic } from "./lib";
 import { CardDetail } from "./screens/CardDetail";
+import { CashScreen } from "./screens/Cash";
 import { Home } from "./screens/Home";
 import { Insights } from "./screens/Insights";
 import { Onboarding } from "./screens/Onboarding";
@@ -82,6 +83,8 @@ function renderOverlay(o: Overlay, i: number) {
       return <Activity key={key} />;
     case "cash":
       return <CashSheet key={key} id={o.id} />;
+    case "cashbook":
+      return <CashScreen key={key} />;
     case "transfer":
       return <TransferSheet key={key} fromId={o.fromId} toId={o.toId} />;
   }

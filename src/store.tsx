@@ -219,6 +219,7 @@ export type Overlay =
   | { kind: "passcode"; mode: "unlock" | "create" | "change"; onDone?: (key: CryptoKey) => void }
   | { kind: "activity" }
   | { kind: "cash"; id?: string }
+  | { kind: "cashbook" }
   | { kind: "transfer"; fromId?: string; toId?: string };
 
 interface Ctx {

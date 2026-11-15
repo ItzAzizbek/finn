@@ -1,5 +1,5 @@
 import { AnimatePresence, motion, type PanInfo } from "motion/react";
-import { ArrowRight, ChartNoAxesColumn, Eye, EyeOff, Plus, Search, Wallet } from "lucide-react";
+import { ArrowRight, Banknote, ChartNoAxesColumn, Eye, EyeOff, Plus, Search } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { WalletDeck } from "../components/Wallet";
 import { Money, TxnRow } from "../components/ui";
@@ -38,7 +38,8 @@ export function Home() {
     },
     {
       value: cashTotal,
-      label: cash.length ? `Cash in hand · ${cash.length} ${cash.length === 1 ? "stash" : "stashes"}` : "No cash yet — tap Add cash",
+      label: cash.length ? `Cash in hand · ${cash.length} ${cash.length === 1 ? "stash" : "stashes"}` : "No cash yet — tap Cash to add some",
+      onTap: () => open({ kind: "cashbook" }),
     },
     {
       value: left,
@@ -59,7 +60,7 @@ export function Home() {
   const actions = [
     { label: "Add money", icon: Plus, onClick: () => open({ kind: "add", dir: "in" }) },
     { label: "Transfer", icon: ArrowRight, onClick: () => open({ kind: "transfer" }) },
-    { label: "Add cash", icon: Wallet, onClick: () => open({ kind: "cash" }) },
+    { label: "Cash", icon: Banknote, onClick: () => open({ kind: "cashbook" }) },
   ];
 
   return (
@@ -138,7 +139,7 @@ export function Home() {
       </section>
 
       <WalletDeck
-        cards={cards}
+        cards={cards.filter((c) => c.kind === "card")}
         header={
           <div className="deck-head">
             <button type="button" className="bank-icon-btn" aria-label="Insights" onClick={() => setTab("insights")}>

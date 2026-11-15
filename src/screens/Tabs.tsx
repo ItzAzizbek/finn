@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { Banknote, ChevronRight, EyeOff, HardDrive, KeyRound, Lock, PiggyBank, Plus, RotateCcw, Snowflake, Trash2 } from "lucide-react";
+import { ChevronRight, EyeOff, HardDrive, KeyRound, Lock, PiggyBank, Plus, RotateCcw, Snowflake, Trash2 } from "lucide-react";
 import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { CardFace } from "../components/Card";
 import { CurrencyPicker, softSpring, Toggle } from "../components/ui";
@@ -18,10 +18,10 @@ export function CardsTab() {
     <div className="page cards-tab">
       <header className="page-title">
         <h1>Wallet</h1>
-        <span className="count-pill">{state.cards.length}</span>
+        <span className="count-pill">{state.cards.filter((c) => c.kind === "card").length}</span>
       </header>
       <div className="cards-list">
-        {state.cards.map((c, i) => (
+        {state.cards.filter((c) => c.kind === "card").map((c, i) => (
           <motion.div key={c.id} className="cards-item" initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ ...softSpring, delay: i * 0.06 }}>
             <motion.button type="button" className="cards-item-card" whileTap={{ scale: 0.97 }} onClick={() => { haptic(); open({ kind: "card", id: c.id }); }}>
               <motion.div layoutId={`card-${c.id}`} transition={softSpring}>
@@ -32,8 +32,8 @@ export function CardsTab() {
               <div>
                 <b>{c.nickname}</b>
                 <small className="dim">
-                  {c.kind === "cash" ? `Cash · ${c.currency}` : `${c.issuer} ${c.brand !== "card" ? BRAND_LABEL[c.brand] : c.type} · `}
-                  {c.kind === "cash" ? null : c.frozen ? (
+                  {c.issuer} {c.brand !== "card" ? BRAND_LABEL[c.brand] : c.type} ·{" "}
+                  {c.frozen ? (
                     <span className="frozen-tag">
                       <Snowflake size={12} strokeWidth={2.6} /> Frozen
                     </span>
@@ -42,22 +42,16 @@ export function CardsTab() {
                   )}
                 </small>
               </div>
-              <button type="button" className="chip-btn" onClick={() => open(c.kind === "cash" ? { kind: "cash", id: c.id } : { kind: "studio", id: c.id })}>
-                {c.kind === "cash" ? "Edit" : "Design"}
+              <button type="button" className="chip-btn" onClick={() => open({ kind: "studio", id: c.id })}>
+                Design
               </button>
             </div>
           </motion.div>
         ))}
-        <div className="add-tiles">
-          <motion.button type="button" className="wallet-empty add-tile" whileTap={{ scale: 0.97 }} onClick={() => open({ kind: "addCard" })}>
-            <Plus size={26} strokeWidth={2.6} />
-            Add a card
-          </motion.button>
-          <motion.button type="button" className="wallet-empty add-tile" whileTap={{ scale: 0.97 }} onClick={() => open({ kind: "cash" })}>
-            <Banknote size={26} strokeWidth={2.4} />
-            Add cash
-          </motion.button>
-        </div>
+        <motion.button type="button" className="wallet-empty add-tile" whileTap={{ scale: 0.97 }} onClick={() => open({ kind: "addCard" })}>
+          <Plus size={26} strokeWidth={2.6} />
+          Add a card
+        </motion.button>
       </div>
     </div>
   );

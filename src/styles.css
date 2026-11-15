@@ -3978,7 +3978,7 @@ button.sub-row {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
-  margin: 34px 0 14px;
+  margin: 34px 0 22px;
 }
 
 .bank-action {
@@ -4500,7 +4500,7 @@ button.sub-row {
   top: 34px;
   height: 46px;
   display: grid;
-  grid-template-columns: 1fr 1fr 46px;
+  grid-template-columns: 1fr 46px;
   gap: 8px;
   z-index: 1;
 }
@@ -4529,13 +4529,47 @@ button.sub-row {
   color: rgba(246, 226, 207, 0.6);
 }
 
-.wallet-note .card {
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.25),
-    0 6px 16px -6px rgba(0, 0, 0, 0.6);
-}
 
 .deck.wallet .deck-stage:focus-visible {
   outline-offset: -4px;
   border-radius: 26px;
+}
+
+/* Cash page */
+.cash-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 4px;
+  padding-top: 6px;
+}
+
+.cash-split {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+.cash-split span {
+  font-size: 13px;
+  font-weight: 650;
+  padding: 5px 10px;
+  border-radius: 99px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  color: var(--text-2);
+}
+
+.cash-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cash-item {
+  display: block;
+  width: 100%;
+  text-align: left;
 }

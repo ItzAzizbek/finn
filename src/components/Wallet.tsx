@@ -1,23 +1,28 @@
 import { animate, motion, useMotionValue, useTransform, type MotionValue, type PanInfo } from "motion/react";
 import { ChevronUp, Plus } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import type { Card } from "../data";
 import { haptic, useElementWidth } from "../lib";
 import { useStore } from "../store";
 import { CardFace } from "./Card";
 
 // ─── The wallet ─────────────────────────────────────────────────────────
-// A real leather wallet tucked under the home screen. Collapsed, you only
-// see its top: card edges poking out of the slots, banknotes peeking from
-// the back compartment, the stitched pocket with its thumb notch — and the
-// history panel covers the rest. Tap it or pull down and the panel slides
-// away, the pocket drops to the bottom and the cards slide out into a list.
+// A real leather wallet tucked under the home screen. Closed, you only see
+// its top: card edges poking out of the slots and the stitched pocket with
+// its thumb notch — the history panel covers the rest. Tap it or pull down
+// and the panel slides away while the cards slide out into a list.
+//
+// Gestures are deliberately one-sided so scrolling never fights the wallet:
+//  · Closed: pulling DOWN (at the top of the page) opens it. Swiping up just
+//    scrolls the page.
+//  · Open: the cards scroll like any list. Only the panel's handle (swipe it
+//    up past a firm threshold) or the ⌃ button on the pocket closes it.
 // One motion value, 0 (closed) → 1 (open), drives every position.
 
 const RATIO = 1.586;
-const LEATHER_INSET = 14; // leather edge from the screen edge
 const CARD_INSET = 30; // cards sit a little inside the leather
-const TOP_PAD = 30; // room above the wallet for banknotes to stick out
+const LEATHER_INSET = 14;
+const TOP_PAD = 14; // breathing room above the wallet
 const SLOT_TOP = TOP_PAD + 16; // where the first card slot starts, closed
 const OPEN_TOP = TOP_PAD + 18; // where the first card sits, open
 const STRIP = 14; // how much of each card shows above the next slot
@@ -27,13 +32,15 @@ const POCKET_H = 100;
 const POCKET_PEEK = 44; // pocket showing above the panel, closed
 const GAP = 14;
 const NOTCH = 24; // thumb-notch radius
-const SWIPE = 48; // px of pull that commits to opening/closing
-const FLICK = 320; // px/s that commits regardless of distance
-
-const BILL_TILT = [-3, 2.5, -1.5];
-const BILL_SHIFT = [-6, 9, -2];
+const SLOP = 8; // px of movement before a touch counts as a gesture
+const OPEN_PULL = 48; // pull this far down to open…
+const OPEN_FLICK = 320; // …or flick down this fast (px/s)
+const CLOSE_PUSH = 90; // closing needs a firmer, deliberate push up the handle
+const CLOSE_FLICK = 700;
 
 const settleSpring = { type: "spring", stiffness: 300, damping: 34 } as const;
+
+type Zone = "stage" | "grab";
 
 export function WalletDeck({ cards, header, children }: { cards: Card[]; header?: ReactNode; children: ReactNode }) {
   const { open, state } = useStore();
@@ -41,17 +48,17 @@ export function WalletDeck({ cards, header, children }: { cards: Card[]; header?
   const [expanded, setExpanded] = useState(false);
   const p = useMotionValue(0);
   const startP = useRef(0);
-  const panned = useRef(false);
+  /** Where the wallet is headed (not where the animation happens to be) — gestures read this. */
+  const isOpen = useRef(false);
+  /** True once the current press has moved — the click that ends it isn't a tap. */
+  const moved = useRef(false);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const grabRef = useRef<HTMLDivElement>(null);
 
-  // Cards live in the slots, cash in the back compartment. Open, cards list first, then the notes.
-  const slotted = cards.filter((c) => c.kind !== "cash");
-  const notes = cards.filter((c) => c.kind === "cash");
-  const items = [...slotted, ...notes];
-  const n = items.length;
-
+  const n = cards.length;
   const W = Math.max(0, width - CARD_INSET * 2);
   const H = W / RATIO;
-  const slots = Math.max(1, Math.min(slotted.length, MAX_SLOTS));
+  const slots = Math.max(1, Math.min(n, MAX_SLOTS));
   const pocketClosed = SLOT_TOP + (slots - 1) * STRIP + LIP;
   const pocketOpen = OPEN_TOP + Math.max(0, n * (H + GAP) - GAP) + 16;
   const collapsedTop = pocketClosed + POCKET_PEEK;
@@ -70,37 +77,69 @@ export function WalletDeck({ cards, header, children }: { cards: Card[]; header?
   useEffect(() => {
     if (n < 1 && expanded) {
       p.set(0);
+      isOpen.current = false;
       setExpanded(false);
     }
   }, [n, expanded, p]);
 
   const settle = (to: 0 | 1, velocity = 0) => {
+    isOpen.current = to === 1;
     animate(p, to, { ...settleSpring, velocity: velocity / travel });
     if ((to === 1) !== expanded) haptic(to ? 12 : 8);
     setExpanded(to === 1);
   };
-
-  const onPanStart = () => {
-    panned.current = true;
-    p.stop();
-    startP.current = p.get();
-  };
-  const onPan = (_: PointerEvent, info: PanInfo) => {
-    const raw = startP.current + info.offset.y / travel;
+  const follow = (dy: number) => {
+    const raw = startP.current + dy / travel;
     // Rubber-band past either end instead of stopping dead.
     p.set(raw > 1 ? 1 + (raw - 1) * 0.25 : raw < 0 ? raw * 0.25 : raw);
   };
-  const onPanEnd = (_: PointerEvent, info: PanInfo) => {
-    const { offset, velocity } = info;
-    const wasOpen = startP.current > 0.5;
-    if (!wasOpen && (offset.y > SWIPE || velocity.y > FLICK)) settle(1, velocity.y);
-    else if (wasOpen && (offset.y < -SWIPE || velocity.y < -FLICK)) settle(0, velocity.y);
-    else settle(wasOpen ? 1 : 0, velocity.y);
+  const release = (dy: number, vy: number) => {
+    const wasOpen = isOpen.current;
+    if (!wasOpen && (dy > OPEN_PULL || vy > OPEN_FLICK)) settle(1, vy);
+    else if (wasOpen && (dy < -CLOSE_PUSH || (vy < -CLOSE_FLICK && dy < -30))) settle(0, vy);
+    else settle(wasOpen ? 1 : 0, vy);
   };
-  const pan = { onPanStart, onPan, onPanEnd };
-  // A click that ends a pan isn't a tap.
-  const resetPan = () => {
-    panned.current = false;
+
+  /** Which way may this zone move the wallet right now? null = leave the gesture to the page. */
+  const allowed = (zone: Zone, dy: number) => {
+    if (!isOpen.current && dy > 0) {
+      if (zone === "grab") return true; // the handle never scrolls, so it can always open
+      // On the wallet itself, pulling down opens only at the top of the page, like pull-to-refresh.
+      const scroller = ref.current?.closest(".tab-scroll");
+      return !scroller || scroller.scrollTop <= 1;
+    }
+    // Closing only ever happens from the handle, never from scrolling over the cards.
+    return zone === "grab" && isOpen.current && dy < 0;
+  };
+
+  // Touch: native, non-passive listeners so we can claim a pull without blocking ordinary scrolling.
+  useTouchPull(stageRef, "stage", { allowed, follow, release, startP, p, moved });
+  useTouchPull(grabRef, "grab", { allowed, follow, release, startP, p, moved });
+
+  // Mouse: a click-drag on the closed wallet or on the handle does the same thing.
+  const mousePan = (zone: Zone) => {
+    let active = false;
+    return {
+      onPanStart: (e: PointerEvent) => {
+        active = e.pointerType === "mouse";
+        if (!active) return;
+        moved.current = true;
+        p.stop();
+        startP.current = p.get();
+      },
+      onPan: (_: PointerEvent, info: PanInfo) => {
+        if (active && allowed(zone, info.offset.y)) follow(info.offset.y);
+      },
+      onPanEnd: (_: PointerEvent, info: PanInfo) => {
+        if (!active) return;
+        active = false;
+        if (allowed(zone, info.offset.y)) release(info.offset.y, info.velocity.y);
+        else settle(isOpen.current ? 1 : 0);
+      },
+    };
+  };
+  const resetMoved = () => {
+    moved.current = false;
   };
 
   const pocketW = Math.max(0, width - LEATHER_INSET * 2);
@@ -108,13 +147,14 @@ export function WalletDeck({ cards, header, children }: { cards: Card[]; header?
   return (
     <div ref={ref} className={`deck wallet ${expanded ? "is-open" : ""}`}>
       <motion.div
+        ref={stageRef}
         className="deck-stage"
         role="button"
         aria-label={expanded ? "Wallet, open" : "Open wallet"}
         aria-expanded={expanded}
         tabIndex={expanded ? -1 : 0}
-        style={{ height: stageH, touchAction: expanded ? "pan-y" : "none" }}
-        onPointerDownCapture={resetPan}
+        style={{ height: stageH }}
+        onPointerDownCapture={resetMoved}
         onKeyDown={(e) => {
           if (!expanded && (e.key === "Enter" || e.key === " ")) {
             e.preventDefault();
@@ -122,34 +162,16 @@ export function WalletDeck({ cards, header, children }: { cards: Card[]; header?
           }
         }}
         onClick={() => {
-          if (panned.current || expanded) return;
+          if (moved.current || expanded) return;
           settle(1);
         }}
-        {...pan}
+        {...(expanded ? {} : mousePan("stage"))}
       >
         {width > 0 && (
           <>
             <motion.div className="wallet-back leather" style={{ top: TOP_PAD, height: backH }} />
 
-            {notes.map((card, k) => (
-              <Note
-                key={card.id}
-                card={card}
-                k={k}
-                openY={OPEN_TOP + (slotted.length + k) * (H + GAP)}
-                p={p}
-                W={W}
-                stealth={state.prefs.stealth}
-                expanded={expanded}
-                onOpen={() => {
-                  if (panned.current) return;
-                  haptic();
-                  open({ kind: "card", id: card.id });
-                }}
-              />
-            ))}
-
-            {slotted.map((card, j) => (
+            {cards.map((card, j) => (
               <Slotted
                 key={card.id}
                 card={card}
@@ -158,11 +180,11 @@ export function WalletDeck({ cards, header, children }: { cards: Card[]; header?
                 openY={OPEN_TOP + j * (H + GAP)}
                 p={p}
                 W={W}
-                count={slotted.length}
+                count={n}
                 stealth={state.prefs.stealth}
                 expanded={expanded}
                 onOpen={() => {
-                  if (panned.current) return;
+                  if (moved.current) return;
                   haptic();
                   open({ kind: "card", id: card.id });
                 }}
@@ -178,10 +200,7 @@ export function WalletDeck({ cards, header, children }: { cards: Card[]; header?
               <motion.div className="wallet-add" style={{ opacity: addOpacity, pointerEvents: expanded ? "auto" : "none" }}>
                 {n === 0 && <span className="wallet-empty-note">Your wallet is empty</span>}
                 <button type="button" onClick={() => open({ kind: "addCard" })}>
-                  <Plus size={18} strokeWidth={2.6} /> Card
-                </button>
-                <button type="button" onClick={() => open({ kind: "cash" })}>
-                  <Plus size={18} strokeWidth={2.6} /> Cash
+                  <Plus size={18} strokeWidth={2.6} /> Add a card
                 </button>
                 <button type="button" className="wallet-close" aria-label="Close wallet" onClick={() => settle(0)}>
                   <ChevronUp size={20} strokeWidth={2.6} />
@@ -193,7 +212,16 @@ export function WalletDeck({ cards, header, children }: { cards: Card[]; header?
       </motion.div>
 
       <div className="deck-panel">
-        <motion.div className="deck-grab" style={{ touchAction: "none" }} onPointerDownCapture={resetPan} onClick={() => !panned.current && settle(expanded ? 0 : 1)} {...pan}>
+        <motion.div
+          ref={grabRef}
+          className="deck-grab"
+          style={{ touchAction: "none" }}
+          role="button"
+          aria-label={expanded ? "Close wallet" : "Open wallet"}
+          onPointerDownCapture={resetMoved}
+          onClick={() => !moved.current && settle(expanded ? 0 : 1)}
+          {...mousePan("grab")}
+        >
           <span className="deck-grabber" />
           <motion.span className="deck-hint" style={{ opacity: hintOpacity }}>
             {n ? "Pull down to open your wallet" : "Pull down — your wallet is empty"}
@@ -204,6 +232,94 @@ export function WalletDeck({ cards, header, children }: { cards: Card[]; header?
       </div>
     </div>
   );
+}
+
+/**
+ * Pull-to-open on touch screens. Waits until the finger has clearly moved, then
+ * either claims the gesture (and stops the page from scrolling) or lets it go
+ * entirely, so a scroll is never half-hijacked.
+ */
+function useTouchPull(
+  target: RefObject<HTMLElement | null>,
+  zone: Zone,
+  h: {
+    allowed: (zone: Zone, dy: number) => boolean;
+    follow: (dy: number) => void;
+    release: (dy: number, vy: number) => void;
+    startP: { current: number };
+    p: MotionValue<number>;
+    moved: { current: boolean };
+  },
+) {
+  // Handlers change every render; the listeners read the latest through a ref.
+  const latest = useRef(h);
+  latest.current = h;
+
+  useEffect(() => {
+    const el = target.current;
+    if (!el) return;
+    let x0 = 0;
+    let y0 = 0;
+    let mode: "idle" | "pull" | "page" = "idle";
+    let lastY = 0;
+    let lastT = 0;
+    let vy = 0;
+
+    const start = (e: TouchEvent) => {
+      if (e.touches.length !== 1) return;
+      const t = e.touches[0];
+      x0 = t.clientX;
+      y0 = lastY = t.clientY;
+      lastT = e.timeStamp;
+      vy = 0;
+      mode = "idle";
+    };
+    const move = (e: TouchEvent) => {
+      if (mode === "page" || e.touches.length !== 1) return;
+      const t = e.touches[0];
+      const dx = t.clientX - x0;
+      const dy = t.clientY - y0;
+      const dt = e.timeStamp - lastT;
+      if (dt > 0) vy = ((t.clientY - lastY) / dt) * 1000;
+      lastY = t.clientY;
+      lastT = e.timeStamp;
+
+      if (mode === "idle") {
+        // Pulling down at the very top would only bounce the page — hold it from the first pixel.
+        if (zone === "stage" && dy > 0 && latest.current.allowed(zone, dy) && e.cancelable) e.preventDefault();
+        if (Math.abs(dy) < SLOP && Math.abs(dx) < SLOP) return;
+        latest.current.moved.current = true;
+        const { allowed, p, startP } = latest.current;
+        if (Math.abs(dy) > Math.abs(dx) && allowed(zone, dy)) {
+          mode = "pull";
+          p.stop();
+          startP.current = p.get();
+        } else {
+          mode = "page";
+          return;
+        }
+      }
+      if (e.cancelable) e.preventDefault();
+      latest.current.follow(dy - Math.sign(dy) * SLOP);
+    };
+    const end = (e: TouchEvent) => {
+      if (mode === "pull") {
+        const t = e.changedTouches[0];
+        latest.current.release(t.clientY - y0, vy);
+      }
+      mode = "idle";
+    };
+    el.addEventListener("touchstart", start, { passive: true });
+    el.addEventListener("touchmove", move, { passive: false });
+    el.addEventListener("touchend", end);
+    el.addEventListener("touchcancel", end);
+    return () => {
+      el.removeEventListener("touchstart", start);
+      el.removeEventListener("touchmove", move);
+      el.removeEventListener("touchend", end);
+      el.removeEventListener("touchcancel", end);
+    };
+  }, [target, zone]);
 }
 
 /** Saddle stitching around the pocket, dipping around the thumb notch. */
@@ -230,39 +346,30 @@ function Stitching({ w, h }: { w: number; h: number }) {
   );
 }
 
-interface ItemProps {
+/** A card in its slot: closed, only its top edge shows; open, it slides up into the list. */
+function Slotted({
+  card,
+  j,
+  slots,
+  count,
+  p,
+  W,
+  openY,
+  stealth,
+  expanded,
+  onOpen,
+}: {
   card: Card;
+  j: number;
+  slots: number;
+  count: number;
   p: MotionValue<number>;
   W: number;
   openY: number;
   stealth: boolean;
   expanded: boolean;
   onOpen: () => void;
-}
-
-function ItemButton({ card, stealth, expanded, onOpen, focusable }: Pick<ItemProps, "card" | "stealth" | "expanded" | "onOpen"> & { focusable: boolean }) {
-  return (
-    <button
-      type="button"
-      className="deck-card-btn"
-      aria-label={card.kind === "cash" ? `Cash: ${card.nickname}` : `${card.issuer} ${card.last4}`}
-      tabIndex={expanded && focusable ? 0 : -1}
-      onClick={(e) => {
-        if (!expanded) return; // closed: the tap opens the wallet instead
-        e.stopPropagation();
-        onOpen();
-      }}
-    >
-      <motion.div layoutId={`card-${card.id}`}>
-        <CardFace card={card} stealth={stealth} />
-      </motion.div>
-    </button>
-  );
-}
-
-/** A card in its slot: closed, only its top edge shows; open, it slides up into the list. */
-function Slotted({ j, slots, count, ...props }: ItemProps & { j: number; slots: number; count: number }) {
-  const { p, W, openY } = props;
+}) {
   const depth = Math.min(j, MAX_SLOTS - 1);
   // The front card (j = 0) sits lowest; each one behind it a strip higher.
   const closedY = SLOT_TOP + (slots - 1 - depth) * STRIP;
@@ -271,26 +378,22 @@ function Slotted({ j, slots, count, ...props }: ItemProps & { j: number; slots: 
   const shade = useTransform(p, [0, 0.6], [Math.min(0.4, depth * 0.13), 0]);
   return (
     <motion.div className="deck-card" style={{ y, opacity, width: W, left: CARD_INSET, zIndex: 10 + count - j }}>
-      <ItemButton {...props} focusable />
+      <button
+        type="button"
+        className="deck-card-btn"
+        aria-label={`${card.issuer} ${card.last4}`}
+        tabIndex={expanded ? 0 : -1}
+        onClick={(e) => {
+          if (!expanded) return; // closed: the tap opens the wallet instead
+          e.stopPropagation();
+          onOpen();
+        }}
+      >
+        <motion.div layoutId={`card-${card.id}`}>
+          <CardFace card={card} stealth={stealth} />
+        </motion.div>
+      </button>
       <motion.span className="deck-shade" style={{ opacity: shade }} />
-    </motion.div>
-  );
-}
-
-/** Cash: closed, banknotes stick up out of the back compartment, a little askew; open, they line up under the cards. */
-function Note({ k, ...props }: ItemProps & { k: number }) {
-  const { p, W, openY } = props;
-  const shown = k < BILL_TILT.length;
-  const closedY = TOP_PAD - 24 + k * 6;
-  const y = useTransform(p, [0, 1], [closedY, openY], { clamp: false });
-  const x = useTransform(p, [0, 1], [shown ? BILL_SHIFT[k] : 0, 0]);
-  const rotate = useTransform(p, [0, 1], [shown ? BILL_TILT[k] : 0, 0]);
-  const opacity = useTransform(p, [0, 0.25], [shown ? 1 : 0, 1]);
-  // Closed, notes are inside the wallet — behind the leather. Once it starts opening they come out on top.
-  const zIndex = useTransform(p, (v) => (v > 0.04 ? 5 : 0));
-  return (
-    <motion.div className="deck-card wallet-note" style={{ y, x, rotate, opacity, zIndex, width: W, left: CARD_INSET }}>
-      <ItemButton {...props} focusable />
     </motion.div>
   );
 }

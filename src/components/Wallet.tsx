@@ -1,28 +1,39 @@
 import { animate, motion, useMotionValue, useTransform, type MotionValue, type PanInfo } from "motion/react";
-import { Banknote, ChevronUp, CreditCard, Plus } from "lucide-react";
+import { ChevronUp, Plus } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Card } from "../data";
 import { haptic, useElementWidth } from "../lib";
 import { useStore } from "../store";
 import { CardFace } from "./Card";
 
-// ─── Wallet deck ────────────────────────────────────────────────────────
-// Collapsed, the cards sit in a tight stack peeking out from behind the
-// activity panel. Pull down (on the stack or the panel's grabber) and the
-// panel slides away while the stack deals out into a full list. Push up to
-// tuck them back in. One motion value, 0 → 1, drives every position.
+// ─── The wallet ─────────────────────────────────────────────────────────
+// A real leather wallet tucked under the home screen. Collapsed, you only
+// see its top: card edges poking out of the slots, banknotes peeking from
+// the back compartment, the stitched pocket with its thumb notch — and the
+// history panel covers the rest. Tap it or pull down and the panel slides
+// away, the pocket drops to the bottom and the cards slide out into a list.
+// One motion value, 0 (closed) → 1 (open), drives every position.
 
 const RATIO = 1.586;
-const GUTTER = 20; // matches --gutter
-const STRIP = 12; // how much of each card behind the front one peeks out
-const PEEK = 64; // how much of the front card shows above the panel
+const LEATHER_INSET = 14; // leather edge from the screen edge
+const CARD_INSET = 30; // cards sit a little inside the leather
+const TOP_PAD = 30; // room above the wallet for banknotes to stick out
+const SLOT_TOP = TOP_PAD + 16; // where the first card slot starts, closed
+const OPEN_TOP = TOP_PAD + 18; // where the first card sits, open
+const STRIP = 14; // how much of each card shows above the next slot
+const MAX_SLOTS = 4; // cards past the fourth hide behind it
+const LIP = 32; // front card showing above the pocket, closed
+const POCKET_H = 100;
+const POCKET_PEEK = 44; // pocket showing above the panel, closed
 const GAP = 14;
-const MAX_DEPTH = 3; // cards further back hide behind the third
-const ADD_ROW = 50;
+const NOTCH = 24; // thumb-notch radius
 const SWIPE = 48; // px of pull that commits to opening/closing
 const FLICK = 320; // px/s that commits regardless of distance
 
-const settleSpring = { type: "spring", stiffness: 320, damping: 34 } as const;
+const BILL_TILT = [-3, 2.5, -1.5];
+const BILL_SHIFT = [-6, 9, -2];
+
+const settleSpring = { type: "spring", stiffness: 300, damping: 34 } as const;
 
 export function WalletDeck({ cards, header, children }: { cards: Card[]; header?: ReactNode; children: ReactNode }) {
   const { open, state } = useStore();
@@ -32,20 +43,30 @@ export function WalletDeck({ cards, header, children }: { cards: Card[]; header?
   const startP = useRef(0);
   const panned = useRef(false);
 
-  const n = cards.length;
-  const W = Math.max(0, width - GUTTER * 2);
+  // Cards live in the slots, cash in the back compartment. Open, cards list first, then the notes.
+  const slotted = cards.filter((c) => c.kind !== "cash");
+  const notes = cards.filter((c) => c.kind === "cash");
+  const items = [...slotted, ...notes];
+  const n = items.length;
+
+  const W = Math.max(0, width - CARD_INSET * 2);
   const H = W / RATIO;
-  // Collapsed, the front card is ~80% of the screen wide, like a card tucked in a sleeve.
-  const front = width ? Math.min(0.9, (width * 0.8) / W) : 0.88;
-  const shown = Math.min(n, MAX_DEPTH + 1);
-  const collapsedTop = n ? (shown - 1) * STRIP + PEEK : 0;
-  const expandedTop = n ? n * (H + GAP) + ADD_ROW + GAP : 0;
+  const slots = Math.max(1, Math.min(slotted.length, MAX_SLOTS));
+  const pocketClosed = SLOT_TOP + (slots - 1) * STRIP + LIP;
+  const pocketOpen = OPEN_TOP + Math.max(0, n * (H + GAP) - GAP) + 16;
+  const collapsedTop = pocketClosed + POCKET_PEEK;
+  const expandedTop = pocketOpen + POCKET_H + 18;
   const travel = Math.max(1, expandedTop - collapsedTop);
+
   const stageH = useTransform(p, [0, 1], [collapsedTop, expandedTop], { clamp: false });
-  const addOpacity = useTransform(p, [0.55, 1], [0, 1]);
+  const pocketY = useTransform(p, [0, 1], [pocketClosed, pocketOpen], { clamp: false });
+  const backH = useTransform(pocketY, (y) => y + POCKET_H - TOP_PAD);
+  const shadowY = useTransform(pocketY, (y) => y - 14);
+  const addOpacity = useTransform(p, [0.6, 1], [0, 1]);
+  const embossOpacity = useTransform(p, [0, 0.4], [1, 0]);
   const hintOpacity = useTransform(p, [0, 0.2], [1, 0]);
 
-  // Removing the last cards collapses the deck so nothing is left floating open.
+  // Emptying the wallet closes it so nothing is left hanging open.
   useEffect(() => {
     if (n < 1 && expanded) {
       p.set(0);
@@ -76,76 +97,107 @@ export function WalletDeck({ cards, header, children }: { cards: Card[]; header?
     else if (wasOpen && (offset.y < -SWIPE || velocity.y < -FLICK)) settle(0, velocity.y);
     else settle(wasOpen ? 1 : 0, velocity.y);
   };
-  const pan = n ? { onPanStart, onPan, onPanEnd } : {};
+  const pan = { onPanStart, onPan, onPanEnd };
   // A click that ends a pan isn't a tap.
   const resetPan = () => {
     panned.current = false;
   };
 
+  const pocketW = Math.max(0, width - LEATHER_INSET * 2);
+
   return (
-    <div ref={ref} className={`deck ${expanded ? "is-open" : ""}`}>
-      {n === 0 ? (
-        <div className="deck-empty">
-          <button type="button" onClick={() => open({ kind: "addCard" })}>
-            <CreditCard size={20} strokeWidth={2.4} /> Add a card
-          </button>
-          <button type="button" onClick={() => open({ kind: "cash" })}>
-            <Banknote size={20} strokeWidth={2.4} /> Add cash
-          </button>
-        </div>
-      ) : (
-        <motion.div
-          className="deck-stage"
-          style={{ height: stageH, touchAction: expanded ? "pan-y" : "none" }}
-          onPointerDownCapture={resetPan}
-          onClick={() => {
-            if (panned.current || expanded) return;
+    <div ref={ref} className={`deck wallet ${expanded ? "is-open" : ""}`}>
+      <motion.div
+        className="deck-stage"
+        role="button"
+        aria-label={expanded ? "Wallet, open" : "Open wallet"}
+        aria-expanded={expanded}
+        tabIndex={expanded ? -1 : 0}
+        style={{ height: stageH, touchAction: expanded ? "pan-y" : "none" }}
+        onPointerDownCapture={resetPan}
+        onKeyDown={(e) => {
+          if (!expanded && (e.key === "Enter" || e.key === " ")) {
+            e.preventDefault();
             settle(1);
-          }}
-          {...pan}
-        >
-          {width > 0 &&
-            cards.map((card, i) => (
-              <DeckCard
+          }
+        }}
+        onClick={() => {
+          if (panned.current || expanded) return;
+          settle(1);
+        }}
+        {...pan}
+      >
+        {width > 0 && (
+          <>
+            <motion.div className="wallet-back leather" style={{ top: TOP_PAD, height: backH }} />
+
+            {notes.map((card, k) => (
+              <Note
                 key={card.id}
                 card={card}
-                i={i}
-                n={n}
+                k={k}
+                openY={OPEN_TOP + (slotted.length + k) * (H + GAP)}
                 p={p}
                 W={W}
-                H={H}
-                front={front}
                 stealth={state.prefs.stealth}
+                expanded={expanded}
                 onOpen={() => {
                   if (panned.current) return;
                   haptic();
                   open({ kind: "card", id: card.id });
                 }}
-                expanded={expanded}
               />
             ))}
-          <motion.div className="deck-add" style={{ top: n * (H + GAP), opacity: addOpacity, pointerEvents: expanded ? "auto" : "none" }}>
-            <button type="button" onClick={() => open({ kind: "addCard" })}>
-              <Plus size={18} strokeWidth={2.6} /> Card
-            </button>
-            <button type="button" onClick={() => open({ kind: "cash" })}>
-              <Plus size={18} strokeWidth={2.6} /> Cash
-            </button>
-            <button type="button" className="deck-close" aria-label="Stack cards" onClick={() => settle(0)}>
-              <ChevronUp size={20} strokeWidth={2.6} />
-            </button>
-          </motion.div>
-        </motion.div>
-      )}
+
+            {slotted.map((card, j) => (
+              <Slotted
+                key={card.id}
+                card={card}
+                j={j}
+                slots={slots}
+                openY={OPEN_TOP + j * (H + GAP)}
+                p={p}
+                W={W}
+                count={slotted.length}
+                stealth={state.prefs.stealth}
+                expanded={expanded}
+                onOpen={() => {
+                  if (panned.current) return;
+                  haptic();
+                  open({ kind: "card", id: card.id });
+                }}
+              />
+            ))}
+
+            <motion.div className="wallet-pocket-shadow" style={{ y: shadowY }} />
+            <motion.div className="wallet-pocket leather" style={{ y: pocketY, height: POCKET_H }}>
+              <Stitching w={pocketW} h={POCKET_H} />
+              <motion.span className="wallet-emboss" style={{ opacity: embossOpacity }}>
+                finn<i>.</i>
+              </motion.span>
+              <motion.div className="wallet-add" style={{ opacity: addOpacity, pointerEvents: expanded ? "auto" : "none" }}>
+                {n === 0 && <span className="wallet-empty-note">Your wallet is empty</span>}
+                <button type="button" onClick={() => open({ kind: "addCard" })}>
+                  <Plus size={18} strokeWidth={2.6} /> Card
+                </button>
+                <button type="button" onClick={() => open({ kind: "cash" })}>
+                  <Plus size={18} strokeWidth={2.6} /> Cash
+                </button>
+                <button type="button" className="wallet-close" aria-label="Close wallet" onClick={() => settle(0)}>
+                  <ChevronUp size={20} strokeWidth={2.6} />
+                </button>
+              </motion.div>
+            </motion.div>
+          </>
+        )}
+      </motion.div>
 
       <div className="deck-panel">
-        <motion.div className="deck-grab" style={{ touchAction: "none" }} onPointerDownCapture={resetPan} onClick={() => !panned.current && n && settle(expanded ? 0 : 1)} {...pan}>
+        <motion.div className="deck-grab" style={{ touchAction: "none" }} onPointerDownCapture={resetPan} onClick={() => !panned.current && settle(expanded ? 0 : 1)} {...pan}>
           <span className="deck-grabber" />
-          {n > 1 && (
-            <motion.span className="deck-hint" style={{ opacity: hintOpacity }}>
-              Pull down to see all {n}
-            </motion.span>
-          )}
+          <motion.span className="deck-hint" style={{ opacity: hintOpacity }}>
+            {n ? "Pull down to open your wallet" : "Pull down — your wallet is empty"}
+          </motion.span>
         </motion.div>
         {header}
         {children}
@@ -154,57 +206,91 @@ export function WalletDeck({ cards, header, children }: { cards: Card[]; header?
   );
 }
 
-function DeckCard({
-  card,
-  i,
-  n,
-  p,
-  W,
-  H,
-  front,
-  stealth,
-  expanded,
-  onOpen,
-}: {
+/** Saddle stitching around the pocket, dipping around the thumb notch. */
+function Stitching({ w, h }: { w: number; h: number }) {
+  if (!w) return null;
+  const inset = 8;
+  const cx = w / 2;
+  const r = NOTCH + inset;
+  const dx = Math.sqrt(r * r - inset * inset);
+  const d = [
+    `M ${inset} ${h + 2}`,
+    `L ${inset} ${inset + 14}`,
+    `Q ${inset} ${inset} ${inset + 14} ${inset}`,
+    `L ${cx - dx} ${inset}`,
+    `A ${r} ${r} 0 0 0 ${cx + dx} ${inset}`,
+    `L ${w - inset - 14} ${inset}`,
+    `Q ${w - inset} ${inset} ${w - inset} ${inset + 14}`,
+    `L ${w - inset} ${h + 2}`,
+  ].join(" ");
+  return (
+    <svg className="wallet-stitch" width={w} height={h} viewBox={`0 0 ${w} ${h}`} aria-hidden>
+      <path d={d} />
+    </svg>
+  );
+}
+
+interface ItemProps {
   card: Card;
-  i: number;
-  n: number;
   p: MotionValue<number>;
   W: number;
-  H: number;
-  front: number;
+  openY: number;
   stealth: boolean;
   expanded: boolean;
   onOpen: () => void;
-}) {
-  const depth = Math.min(i, MAX_DEPTH);
-  const shown = Math.min(n, MAX_DEPTH + 1);
-  // Collapsed: the front card (i = 0) sits lowest; each card behind it a strip higher and a touch smaller.
-  const yc = (shown - 1 - depth) * STRIP;
-  const ye = i * (H + GAP);
-  const y = useTransform(p, [0, 1], [yc, ye], { clamp: false });
-  const scale = useTransform(p, [0, 1], [front - depth * 0.045, 1]);
-  const opacity = useTransform(p, [0, 0.25], [i > MAX_DEPTH ? 0 : 1, 1]);
-  const shade = useTransform(p, [0, 0.6], [Math.min(0.45, depth * 0.16), 0]);
+}
 
+function ItemButton({ card, stealth, expanded, onOpen, focusable }: Pick<ItemProps, "card" | "stealth" | "expanded" | "onOpen"> & { focusable: boolean }) {
   return (
-    <motion.div className="deck-card" style={{ y, scale, opacity, width: W, zIndex: n - i }}>
-      <button
-        type="button"
-        className="deck-card-btn"
-        aria-label={card.kind === "cash" ? `Cash: ${card.nickname}` : `${card.issuer} ${card.last4}`}
-        tabIndex={expanded || i === 0 ? 0 : -1}
-        onClick={(e) => {
-          if (!expanded) return; // collapsed: let the stage open the deck
-          e.stopPropagation();
-          onOpen();
-        }}
-      >
-        <motion.div layoutId={`card-${card.id}`}>
-          <CardFace card={card} stealth={stealth} />
-        </motion.div>
-      </button>
+    <button
+      type="button"
+      className="deck-card-btn"
+      aria-label={card.kind === "cash" ? `Cash: ${card.nickname}` : `${card.issuer} ${card.last4}`}
+      tabIndex={expanded && focusable ? 0 : -1}
+      onClick={(e) => {
+        if (!expanded) return; // closed: the tap opens the wallet instead
+        e.stopPropagation();
+        onOpen();
+      }}
+    >
+      <motion.div layoutId={`card-${card.id}`}>
+        <CardFace card={card} stealth={stealth} />
+      </motion.div>
+    </button>
+  );
+}
+
+/** A card in its slot: closed, only its top edge shows; open, it slides up into the list. */
+function Slotted({ j, slots, count, ...props }: ItemProps & { j: number; slots: number; count: number }) {
+  const { p, W, openY } = props;
+  const depth = Math.min(j, MAX_SLOTS - 1);
+  // The front card (j = 0) sits lowest; each one behind it a strip higher.
+  const closedY = SLOT_TOP + (slots - 1 - depth) * STRIP;
+  const y = useTransform(p, [0, 1], [closedY, openY], { clamp: false });
+  const opacity = useTransform(p, [0, 0.25], [j >= MAX_SLOTS ? 0 : 1, 1]);
+  const shade = useTransform(p, [0, 0.6], [Math.min(0.4, depth * 0.13), 0]);
+  return (
+    <motion.div className="deck-card" style={{ y, opacity, width: W, left: CARD_INSET, zIndex: 10 + count - j }}>
+      <ItemButton {...props} focusable />
       <motion.span className="deck-shade" style={{ opacity: shade }} />
+    </motion.div>
+  );
+}
+
+/** Cash: closed, banknotes stick up out of the back compartment, a little askew; open, they line up under the cards. */
+function Note({ k, ...props }: ItemProps & { k: number }) {
+  const { p, W, openY } = props;
+  const shown = k < BILL_TILT.length;
+  const closedY = TOP_PAD - 24 + k * 6;
+  const y = useTransform(p, [0, 1], [closedY, openY], { clamp: false });
+  const x = useTransform(p, [0, 1], [shown ? BILL_SHIFT[k] : 0, 0]);
+  const rotate = useTransform(p, [0, 1], [shown ? BILL_TILT[k] : 0, 0]);
+  const opacity = useTransform(p, [0, 0.25], [shown ? 1 : 0, 1]);
+  // Closed, notes are inside the wallet — behind the leather. Once it starts opening they come out on top.
+  const zIndex = useTransform(p, (v) => (v > 0.04 ? 5 : 0));
+  return (
+    <motion.div className="deck-card wallet-note" style={{ y, x, rotate, opacity, zIndex, width: W, left: CARD_INSET }}>
+      <ItemButton {...props} focusable />
     </motion.div>
   );
 }

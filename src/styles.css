@@ -3978,7 +3978,7 @@ button.sub-row {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
-  margin: 34px 0 40px;
+  margin: 34px 0 14px;
 }
 
 .bank-action {
@@ -4014,6 +4014,8 @@ button.sub-row {
 
 .deck-stage {
   position: relative;
+  z-index: 1; /* its own layer, so the history panel always covers the wallet */
+  isolation: isolate;
   flex: none;
   cursor: pointer;
   -webkit-user-select: none;
@@ -4027,7 +4029,6 @@ button.sub-row {
 .deck-card {
   position: absolute;
   top: 0;
-  left: var(--gutter);
   transform-origin: 50% 0%;
   will-change: transform;
 }
@@ -4058,52 +4059,10 @@ button.sub-row {
   pointer-events: none;
 }
 
-.deck-add {
-  position: absolute;
-  left: var(--gutter);
-  right: var(--gutter);
-  height: 50px;
-  display: grid;
-  grid-template-columns: 1fr 1fr 50px;
-  gap: 8px;
-}
 
-.deck-add button {
-  border-radius: 16px;
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  font-size: 14px;
-  font-weight: 700;
-}
 
-.deck-add .deck-close {
-  color: var(--text-2);
-}
 
-.deck-empty {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  padding: 0 var(--gutter) 22px;
-}
 
-.deck-empty button {
-  height: 88px;
-  border-radius: 22px;
-  border: 2px dashed var(--line-2);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  color: var(--text-2);
-  font-weight: 700;
-  font-size: 14px;
-}
 
 .deck-panel {
   position: relative;
@@ -4430,4 +4389,153 @@ button.sub-row {
   place-items: center;
   font-size: 11px;
   color: var(--text-3);
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   The wallet — leather, stitching, a pocket with a thumb notch
+   ════════════════════════════════════════════════════════════════════ */
+
+.leather {
+  --stitch: rgba(244, 204, 160, 0.5);
+  background:
+    radial-gradient(120% 90% at 18% 0%, rgba(255, 214, 176, 0.16), transparent 60%),
+    linear-gradient(172deg, #6e432a 0%, #4b2b1a 46%, #2d190e 100%);
+}
+
+.leather::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0.32;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.wallet-back {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  z-index: 1;
+  border-radius: 26px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 220, 186, 0.22),
+    inset 0 -20px 40px -20px rgba(0, 0, 0, 0.5),
+    0 20px 50px -18px rgba(0, 0, 0, 0.9);
+}
+
+/* stitching along the wallet's top and sides */
+.wallet-back::before {
+  content: "";
+  position: absolute;
+  inset: 8px;
+  border: 1.5px dashed var(--stitch);
+  border-radius: 19px;
+  pointer-events: none;
+}
+
+.wallet-pocket {
+  position: absolute;
+  top: 0;
+  left: 14px;
+  right: 14px;
+  z-index: 40;
+  border-radius: 6px 6px 26px 26px;
+  background:
+    radial-gradient(90% 120% at 50% 0%, rgba(255, 214, 176, 0.14), transparent 55%),
+    linear-gradient(180deg, #7c4c2f 0%, #5a3421 28%, #3c2215 100%);
+  box-shadow: inset 0 1.5px 0 rgba(255, 222, 190, 0.32);
+  /* the thumb notch — a half-circle bite out of the top edge */
+  -webkit-mask-image: radial-gradient(circle at 50% 0, transparent 23.5px, #000 24.5px);
+  mask-image: radial-gradient(circle at 50% 0, transparent 23.5px, #000 24.5px);
+}
+
+.wallet-pocket-shadow {
+  position: absolute;
+  top: 0;
+  left: 20px;
+  right: 20px;
+  height: 14px;
+  z-index: 30;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent, rgba(20, 8, 2, 0.45));
+}
+
+.wallet-stitch {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.wallet-stitch path {
+  fill: none;
+  stroke: var(--stitch);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+  stroke-linecap: round;
+}
+
+.wallet-emboss {
+  position: absolute;
+  top: 12px;
+  right: 30px;
+  font-size: 15px;
+  font-weight: 850;
+  letter-spacing: -0.04em;
+  color: rgba(20, 8, 2, 0.4);
+  text-shadow: 0 1px 0 rgba(255, 222, 190, 0.16);
+  pointer-events: none;
+}
+
+.wallet-emboss i {
+  font-style: normal;
+}
+
+.wallet-add {
+  position: absolute;
+  left: 22px;
+  right: 22px;
+  top: 34px;
+  height: 46px;
+  display: grid;
+  grid-template-columns: 1fr 1fr 46px;
+  gap: 8px;
+  z-index: 1;
+}
+
+.wallet-add button {
+  border-radius: 15px;
+  background: rgba(20, 8, 2, 0.32);
+  border: 1px solid rgba(255, 222, 190, 0.16);
+  color: #f6e2cf;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.wallet-empty-note {
+  position: absolute;
+  top: -26px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(246, 226, 207, 0.6);
+}
+
+.wallet-note .card {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.25),
+    0 6px 16px -6px rgba(0, 0, 0, 0.6);
+}
+
+.deck.wallet .deck-stage:focus-visible {
+  outline-offset: -4px;
+  border-radius: 26px;
 }

@@ -1,9 +1,12 @@
 import { motion } from "motion/react";
-import { Check, Lock } from "lucide-react";
+import { Check, Lock, ScanLine } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { EXAMPLES, groupInput, parseInput, type Currency } from "../currency";
 import { makeCard, type Card, type CardType } from "../data";
-import { BRAND_LABEL, cvvLength, detectBrand, expiryValid, formatExpiry, formatNumber, isLocalScheme, luhnValid, numberLength, type CardSecrets, type Sealed } from "../vault";
+import { BRAND_LABEL, cvvLength, detectBrand, expiryValid, formatExpiry, formatNumber, isLocalScheme, luhnValid, numberLength, type Brand, type CardSecrets, type Sealed } from "../vault";
+import { CardScanner } from "../scan/Scanner";
+import type { CardRead } from "../scan/parse";
+import { useStore } from "../store";
 import { CardBack, CardFace } from "./Card";
 import { CurrencyPicker, MoneyInput, Segmented, softSpring } from "./ui";
 
@@ -76,20 +79,22 @@ export function Field({ label, children, error, hint }: { label: string; childre
   );
 }
 
+/** Setting the number can change the network — HUMO and UZCARD have no CVV and only hold soʻm. */
+export function numberPatch(raw: string, prev: Brand): Partial<CardDraft> {
+  const digits = raw.replace(/\D/g, "");
+  const next = detectBrand(digits);
+  const patch: Partial<CardDraft> = { number: digits.slice(0, numberLength(next)) };
+  if (cvvLength(next) === 0) patch.cvv = "";
+  if (isLocalScheme(next) && !isLocalScheme(prev)) patch.currency = "UZS";
+  return patch;
+}
+
 /** Holder, number, expiry and CVV — shared by "add card" and "update card details". */
 export function DetailsFields({ draft, set, onCvvFocus }: { draft: CardDraft; set: (p: Partial<CardDraft>) => void; onCvvFocus?: (focused: boolean) => void }) {
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const brand = detectBrand(draft.number);
   const hasCvv = cvvLength(brand) > 0;
-  const setNumber = (raw: string) => {
-    const digits = raw.replace(/\D/g, "");
-    const next = detectBrand(digits);
-    const patch: Partial<CardDraft> = { number: digits.slice(0, numberLength(next)) };
-    // HUMO and UZCARD have no CVV and only ever hold soʻm.
-    if (cvvLength(next) === 0) patch.cvv = "";
-    if (isLocalScheme(next) && !isLocalScheme(brand)) patch.currency = "UZS";
-    set(patch);
-  };
+  const setNumber = (raw: string) => set(numberPatch(raw, brand));
   const errors = detailsErrors(draft);
   const touch = (k: string) => () => setTouched((t) => ({ ...t, [k]: true }));
   const numberDone = !errors.number;
@@ -147,6 +152,21 @@ export function DetailsFields({ draft, set, onCvvFocus }: { draft: CardDraft; se
 export function CardForm({ draft, onChange, index = 0 }: { draft: CardDraft; onChange: (d: CardDraft) => void; index?: number }) {
   const set = (patch: Partial<CardDraft>) => onChange({ ...draft, ...patch });
   const [flipped, setFlipped] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const { toast } = useStore();
+
+  // Whatever the scan read goes straight into the form — the user just checks it and adds the CVV.
+  const applyScan = (r: CardRead) => {
+    setScanning(false);
+    const patch: Partial<CardDraft> = r.number ? numberPatch(r.number, detectBrand(draft.number)) : {};
+    if (r.expiry) patch.expiry = r.expiry;
+    if (r.holder) patch.holder = r.holder;
+    if (r.issuer && !draft.issuer.trim()) patch.issuer = r.issuer;
+    set(patch);
+    const brand = detectBrand(patch.number ?? draft.number);
+    const missing = [!r.expiry && "expiry", !r.holder && "name", cvvLength(brand) > 0 && "CVV"].filter(Boolean);
+    toast(missing.length ? `Card scanned — add the ${missing.join(" and ")}` : "Card scanned — check the details");
+  };
 
   // Live preview: a stable id keeps the skin steady while typing.
   const preview = useMemo(() => {
@@ -188,6 +208,18 @@ export function CardForm({ draft, onChange, index = 0 }: { draft: CardDraft; onC
           <CurrencyPicker id="card-currency" value={cur} onChange={setCurrency} />
         )}
       </div>
+
+      <motion.button type="button" className="scan-cta" whileTap={{ scale: 0.97 }} onClick={() => setScanning(true)}>
+        <span className="scan-cta-icon">
+          <ScanLine size={22} strokeWidth={2.4} />
+        </span>
+        <span>
+          <b>Scan your card</b>
+          <small>Point your camera — number, expiry and name fill in for you</small>
+        </span>
+      </motion.button>
+      {/* Unmounted outright (no exit animation): an invisible scanner left behind would swallow taps. */}
+      {scanning && <CardScanner onResult={applyScan} onClose={() => setScanning(false)} />}
 
       <div className="form-section-label">Card details</div>
       <DetailsFields draft={draft} set={set} onCvvFocus={setFlipped} />

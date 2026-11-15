@@ -4573,3 +4573,223 @@ button.sub-row {
   width: 100%;
   text-align: left;
 }
+
+/* ════════════════════════════════════════════════════════════════════
+   Card scanner
+   ════════════════════════════════════════════════════════════════════ */
+
+.scan-cta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: 20px;
+  text-align: left;
+  background: color-mix(in srgb, var(--bank-accent) 14%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--bank-accent) 35%, transparent);
+}
+
+.scan-cta-icon {
+  width: 46px;
+  height: 46px;
+  flex: none;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--bank-accent);
+  color: var(--bank-accent-ink);
+}
+
+.scan-cta b {
+  display: block;
+  font-size: 16px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+
+.scan-cta small {
+  font-size: 12.5px;
+  color: var(--text-2);
+  font-weight: 550;
+}
+
+.scanner {
+  position: absolute;
+  inset: 0;
+  z-index: 200;
+  background: #000;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  color: #fff;
+}
+
+.scanner-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* card-shaped window; everything around it is dimmed */
+.scanner-frame {
+  position: absolute;
+  left: 50%;
+  top: 44%;
+  width: min(86%, 420px);
+  aspect-ratio: 1.586;
+  transform: translate(-50%, -50%);
+  border-radius: 18px;
+  box-shadow: 0 0 0 200vmax rgba(0, 0, 0, 0.62);
+  pointer-events: none;
+}
+
+.scanner-frame i {
+  position: absolute;
+  width: 34px;
+  height: 34px;
+  border: 4px solid #fff;
+  transition: border-color 0.3s;
+}
+
+.scanner-frame .tl { top: -2px; left: -2px; border-right: 0; border-bottom: 0; border-top-left-radius: 18px; }
+.scanner-frame .tr { top: -2px; right: -2px; border-left: 0; border-bottom: 0; border-top-right-radius: 18px; }
+.scanner-frame .bl { bottom: -2px; left: -2px; border-right: 0; border-top: 0; border-bottom-left-radius: 18px; }
+.scanner-frame .br { bottom: -2px; right: -2px; border-left: 0; border-top: 0; border-bottom-right-radius: 18px; }
+
+.scanner.is-found .scanner-frame i {
+  border-color: var(--bank-in);
+}
+
+.scanner-beam {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--bank-accent), transparent);
+  box-shadow: 0 0 14px var(--bank-accent);
+  animation: scan-beam 2.2s ease-in-out infinite alternate;
+}
+
+@keyframes scan-beam {
+  from { top: 12%; }
+  to { top: 88%; }
+}
+
+.scanner-num {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -40px;
+  text-align: center;
+  font-size: 19px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.8);
+}
+
+.scanner-top {
+  position: relative;
+  display: grid;
+  grid-template-columns: 44px 1fr 44px;
+  align-items: center;
+  text-align: center;
+  padding: calc(var(--safe-top) + 12px) 16px 0;
+  font-size: 17px;
+}
+
+.scanner-btn,
+.scanner-btn-spacer {
+  width: 44px;
+  height: 44px;
+}
+
+.scanner-btn {
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.14);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+
+.scanner-btn.is-on {
+  background: #fff;
+  color: #000;
+}
+
+.scanner-bottom {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 0 24px calc(var(--safe-bottom) + 24px);
+  text-align: center;
+}
+
+.scanner-msg {
+  font-size: 15px;
+  font-weight: 650;
+  min-height: 2.7em;
+  max-width: 320px;
+}
+
+.scanner-chips {
+  display: flex;
+  gap: 8px;
+}
+
+.scan-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 99px;
+  font-size: 13px;
+  font-weight: 650;
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.7);
+  transition: background 0.25s, color 0.25s;
+}
+
+.scan-chip.is-on {
+  background: var(--bank-in);
+  color: #04210f;
+}
+
+.scan-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.6;
+}
+
+.scanner-photo {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 18px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.14);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.scanner-photo:disabled {
+  opacity: 0.45;
+}
+
+.scanner-note {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+  max-width: 300px;
+}

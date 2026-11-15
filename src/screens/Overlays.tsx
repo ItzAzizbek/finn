@@ -1,13 +1,14 @@
 import { AnimatePresence, motion } from "motion/react";
-import { CalendarDays, Delete, Lock, Paintbrush, Search, Trash2 } from "lucide-react";
+import { ArrowDownUp, CalendarDays, Delete, Lock, Paintbrush, Search, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { convert, CURRENCIES, EXAMPLES, formatMoney, groupInput, roundFor, type Currency } from "../currency";
+import { dayLabel, timeLabel } from "../lib";
 import { CardBack, CardFace } from "../components/Card";
 import { CardForm, DetailsFields, detailsErrors, draftIsValid, draftSecrets, draftToCard, EMPTY_DRAFT, type CardDraft } from "../components/CardForm";
 import { CategoryIcon, Icon } from "../components/icons";
 import { StudioEditor } from "../components/Studio";
 import { Button, CurrencyPicker, MoneyInput, ScreenHeader, Segmented, Sheet, spring, TxnList } from "../components/ui";
-import { CATEGORIES, SPEND_CATEGORIES, uid, type Card, type CategoryId } from "../data";
+import { CATEGORIES, makeCash, SPEND_CATEGORIES, uid, walletLabel, type Card, type CategoryId, type Txn } from "../data";
 import { haptic } from "../lib";
 import { useStore } from "../store";
 import { detectBrand, seal, unseal, type CardSecrets } from "../vault";
@@ -19,7 +20,7 @@ export function StudioScreen({ id }: { id: string }) {
   const original = state.cards.find((c) => c.id === id);
   const [card, setCard] = useState<Card | undefined>(original);
   if (!card) return null;
-  const others = state.cards.filter((c) => c.id !== id);
+  const others = state.cards.filter((c) => c.id !== id && c.kind !== "cash");
 
   return (
     <motion.div className="overlay screen studio-screen" initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", stiffness: 340, damping: 38 }}>
@@ -82,14 +83,21 @@ function amountToRaw(n: number) {
   return Number.isInteger(abs) ? String(abs) : abs.toFixed(2).replace(/0$/, "");
 }
 
-export function TxnSheet({ cardId, txnId }: { cardId?: string; txnId?: string }) {
-  const { state, dispatch, close, open, toast } = useStore();
+export function TxnSheet({ cardId, txnId, dir }: { cardId?: string; txnId?: string; dir?: "in" | "out" }) {
+  const { state } = useStore();
   const existing = txnId ? state.txns.find((t) => t.id === txnId) : undefined;
+  // A transfer is two linked legs — it gets its own view rather than the spend editor.
+  if (existing?.category === "transfer") return <TransferView txn={existing} />;
+  return <TxnEditor cardId={cardId} existing={existing} dir={dir} />;
+}
+
+function TxnEditor({ cardId, existing, dir }: { cardId?: string; existing?: Txn; dir?: "in" | "out" }) {
+  const { state, dispatch, close, open, toast } = useStore();
   const today = dateKey(new Date());
   const yesterday = dateKey(new Date(Date.now() - 86_400_000));
 
   const [raw, setRaw] = useState(existing ? amountToRaw(existing.amount) : "0");
-  const [dirn, setDirn] = useState<"out" | "in">(existing && existing.amount > 0 ? "in" : "out");
+  const [dirn, setDirn] = useState<"out" | "in">(existing ? (existing.amount > 0 ? "in" : "out") : (dir ?? "out"));
   const [cat, setCat] = useState<CategoryId>(existing && existing.category !== "income" ? existing.category : "food");
   const [merchant, setMerchant] = useState(existing?.merchant ?? "");
   const [card, setCard] = useState(existing?.cardId ?? cardId ?? state.cards[0]?.id);
@@ -108,7 +116,7 @@ export function TxnSheet({ cardId, txnId }: { cardId?: string; txnId?: string })
   const recent = useMemo(() => {
     const seen = new Map<string, CategoryId>();
     for (const t of state.txns) {
-      if (t.amount < 0 && !seen.has(t.merchant)) seen.set(t.merchant, t.category);
+      if (t.amount < 0 && t.category !== "transfer" && !seen.has(t.merchant)) seen.set(t.merchant, t.category);
       if (seen.size >= 8) break;
     }
     return [...seen.entries()];
@@ -242,7 +250,7 @@ export function TxnSheet({ cardId, txnId }: { cardId?: string; txnId?: string })
       </div>
       <div className="card-picker">
         {state.cards.map((c) => (
-          <button key={c.id} type="button" className={`pick-card ${card === c.id ? "is-on" : ""}`} onClick={() => setCard(c.id)} aria-label={`${c.nickname || c.issuer} ${c.last4}`}>
+          <button key={c.id} type="button" className={`pick-card ${card === c.id ? "is-on" : ""}`} onClick={() => setCard(c.id)} aria-label={walletLabel(c)}>
             <CardFace card={c} showBalance={false} />
           </button>
         ))}
@@ -411,7 +419,7 @@ export function SubSheet({ id }: { id?: string }) {
                   setCurrency(c.currency); // a subscription is billed in its card's currency by default
                 }}
               >
-                {c.nickname || c.issuer} · {c.last4} · {c.currency}
+                {c.kind === "cash" ? c.nickname : `${c.nickname || c.issuer} · ${c.last4}`} · {c.currency}
               </button>
             ))}
           </div>
@@ -609,6 +617,271 @@ export function CardDetailsSheet({ id }: { id: string }) {
           Save details
         </Button>
       </div>
+    </Sheet>
+  );
+}
+
+// ─── Cash ───────────────────────────────────────────────────────────────
+
+export function CashSheet({ id }: { id?: string }) {
+  const { state, dispatch, close, open, toast, overlays } = useStore();
+  const existing = id ? state.cards.find((c) => c.id === id && c.kind === "cash") : undefined;
+  const [name, setName] = useState(existing?.nickname ?? "");
+  const [currency, setCurrency] = useState<Currency>(existing?.currency ?? state.currency);
+  const [amount, setAmount] = useState(existing ? amountToRaw(existing.balance) : "");
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const taken = state.cards.filter((c) => c.kind === "cash").length;
+  const fallback = taken ? `Cash ${taken + 1}` : "Wallet";
+
+  // Live preview, built the same way the saved wallet will be.
+  const preview = useMemo(() => ({ ...makeCash(name || fallback, currency, num(amount)), id: "preview" }), [name, fallback, currency, amount]);
+
+  const save = () => {
+    haptic(10);
+    if (existing) {
+      dispatch({ type: "updateCard", card: { ...existing, nickname: name.trim() || existing.nickname, balance: roundFor(num(amount), existing.currency) } });
+      toast("Cash updated");
+    } else {
+      dispatch({ type: "addCards", cards: [makeCash(name || fallback, currency, roundFor(num(amount), currency))] });
+      toast("Cash added to your wallet");
+    }
+    close();
+  };
+
+  return (
+    <Sheet onClose={close} title={existing ? "Edit cash" : "Add cash"}>
+      <div className="edit-card-preview">
+        <CardFace card={preview} />
+      </div>
+      <div className="fields">
+        <label className="field">
+          <span className="field-label">Name</span>
+          <input value={name} maxLength={20} placeholder={fallback} onChange={(e) => setName(e.target.value)} autoComplete="off" />
+        </label>
+        <label className="field">
+          <span className="field-label">{existing ? "In it right now" : "How much is in it"}</span>
+          <MoneyInput currency={currency} value={amount} placeholder="0" onChange={setAmount} />
+        </label>
+      </div>
+      {!existing && (
+        <div className="tool-block">
+          <div className="tool-label">Currency</div>
+          <CurrencyPicker id="cash-currency" value={currency} onChange={setCurrency} />
+        </div>
+      )}
+      {existing && <p className="sheet-note">Count what's actually in your pocket and type it here — it fixes the balance without logging a transaction.</p>}
+      <div className="sheet-actions">
+        <Button onClick={save}>{existing ? "Save" : "Add cash"}</Button>
+        {existing && (
+          <Button
+            variant="ghost"
+            onClick={() => {
+              close();
+              open({ kind: "transfer", fromId: existing.id });
+            }}
+          >
+            <ArrowDownUp size={18} strokeWidth={2.4} /> Move money
+          </Button>
+        )}
+      </div>
+      {existing && (
+        <button
+          type="button"
+          className="danger-link"
+          onClick={() => {
+            haptic(15);
+            if (!confirmDelete) return setConfirmDelete(true);
+            const underDetail = overlays[overlays.length - 2]?.kind === "card";
+            dispatch({ type: "deleteCard", id: existing.id });
+            toast("Cash removed");
+            close();
+            if (underDetail) close();
+          }}
+        >
+          <Trash2 size={16} strokeWidth={2.4} />
+          {confirmDelete ? "Tap again — removes its transactions too" : "Remove this cash"}
+        </button>
+      )}
+    </Sheet>
+  );
+}
+
+// ─── Move money between your own wallets ────────────────────────────────
+
+function WalletPicker({ value, onChange, label }: { value?: string; onChange: (id: string) => void; label: string }) {
+  const { state } = useStore();
+  return (
+    <div className="tool-block">
+      <div className="tool-label">{label}</div>
+      <div className="card-picker">
+        {state.cards.map((c) => (
+          <button key={c.id} type="button" className={`pick-card ${value === c.id ? "is-on" : ""}`} onClick={() => onChange(c.id)} aria-label={walletLabel(c)}>
+            <CardFace card={c} showBalance={false} />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function TransferSheet({ fromId, toId }: { fromId?: string; toId?: string }) {
+  const { state, dispatch, close, open, toast } = useStore();
+  const wallets = state.cards;
+  const [from, setFrom] = useState<string | undefined>(fromId ?? wallets.find((c) => c.kind === "card")?.id ?? wallets[0]?.id);
+  const [to, setTo] = useState<string | undefined>(toId ?? wallets.find((c) => c.id !== (fromId ?? from) && c.kind === "cash")?.id ?? wallets.find((c) => c.id !== (fromId ?? from))?.id);
+  const [amount, setAmount] = useState("");
+  // What lands on the other side. Follows your exchange rate until you type the real figure.
+  const [received, setReceived] = useState<string | null>(null);
+  const src = wallets.find((c) => c.id === from);
+  const dst = wallets.find((c) => c.id === to);
+
+  if (wallets.length < 2 || !src || !dst) {
+    return (
+      <Sheet onClose={close} title="Move money">
+        <div className="empty">
+          <div className="empty-icon">
+            <Icon name="transfer" size={34} />
+          </div>
+          You need two places to move money between
+          <p>Add a card or some cash — then move money from one to the other, like an ATM withdrawal.</p>
+          <div className="empty-pair">
+            <button type="button" className="chip-btn" onClick={() => { close(); open({ kind: "addCard" }); }}>
+              Add a card
+            </button>
+            <button type="button" className="chip-btn" onClick={() => { close(); open({ kind: "cash" }); }}>
+              Add cash
+            </button>
+          </div>
+        </div>
+      </Sheet>
+    );
+  }
+
+  const sent = num(amount);
+  const sameCurrency = src.currency === dst.currency;
+  const auto = roundFor(convert(sent, src.currency, dst.currency, state.rates), dst.currency);
+  const got = sameCurrency ? sent : received !== null ? num(received) : auto;
+  const short = src.type === "debit" && sent > src.balance;
+  const valid = sent > 0 && got > 0 && from !== to;
+
+  const pick = (side: "from" | "to") => (id: string) => {
+    haptic(5);
+    setReceived(null);
+    if (side === "from") {
+      if (id === to) setTo(from); // picking the destination as source swaps them
+      setFrom(id);
+    } else {
+      if (id === from) setFrom(to);
+      setTo(id);
+    }
+  };
+
+  const save = () => {
+    if (!valid) return;
+    haptic(12);
+    const pairId = uid();
+    const date = new Date().toISOString();
+    const leg = (wallet: Card, amt: number, merchant: string): Txn => ({ id: uid(), pairId, cardId: wallet.id, currency: wallet.currency, merchant, category: "transfer", amount: amt, date });
+    const toCash = dst.kind === "cash" && src.kind === "card";
+    dispatch({
+      type: "transfer",
+      out: leg(src, -sent, toCash ? "Cash withdrawal" : `To ${walletLabel(dst)}`),
+      in: leg(dst, got, `From ${walletLabel(src)}`),
+    });
+    toast(`Moved ${formatMoney(sent, src.currency)} to ${dst.kind === "cash" ? dst.nickname : dst.nickname || dst.issuer}`);
+    close();
+  };
+
+  return (
+    <Sheet onClose={close} title="Move money" className="xfer-sheet">
+      <WalletPicker label="From" value={from} onChange={pick("from")} />
+      <button
+        type="button"
+        className="xfer-swap"
+        aria-label="Swap"
+        onClick={() => {
+          haptic();
+          setFrom(to);
+          setTo(from);
+          setReceived(null);
+        }}
+      >
+        <ArrowDownUp size={18} strokeWidth={2.6} />
+      </button>
+      <WalletPicker label="To" value={to} onChange={pick("to")} />
+      <div className="fields">
+        <label className="field">
+          <span className="field-label">
+            Amount
+            <span className="field-hint">{src.currency}</span>
+          </span>
+          <MoneyInput currency={src.currency} value={amount} placeholder="0" onChange={setAmount} />
+        </label>
+        {!sameCurrency && (
+          <label className="field">
+            <span className="field-label">
+              Arrives as
+              <span className="field-hint">{dst.currency}</span>
+            </span>
+            <MoneyInput currency={dst.currency} value={received ?? (auto ? amountToRaw(auto) : "")} placeholder="0" onChange={setReceived} />
+          </label>
+        )}
+      </div>
+      {!sameCurrency && <p className="sheet-note">Filled in at your rate. If the exchange gave you a different amount, type what you actually got.</p>}
+      {short && <p className="sheet-note is-warn">That's more than the {formatMoney(src.balance, src.currency)} on {walletLabel(src)} — it'll go below zero.</p>}
+      <Button onClick={save} disabled={!valid}>
+        {sent ? `Move ${formatMoney(sent, src.currency)}` : "Enter an amount"}
+      </Button>
+    </Sheet>
+  );
+}
+
+/** A logged transfer: both legs at a glance, and one button to undo it. */
+function TransferView({ txn }: { txn: Txn }) {
+  const { state, dispatch, close, toast } = useStore();
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const legs = txn.pairId ? state.txns.filter((t) => t.pairId === txn.pairId) : [txn];
+  const out = legs.find((t) => t.amount < 0);
+  const into = legs.find((t) => t.amount > 0);
+  const wallet = (t?: Txn) => (t ? state.cards.find((c) => c.id === t.cardId) : undefined);
+
+  const side = (t: Txn | undefined, label: string) => {
+    const w = wallet(t);
+    return (
+      <div className="xfer-leg">
+        <div className="tool-label">{label}</div>
+        <div className="xfer-leg-row">
+          <div className="pick-card is-static">{w ? <CardFace card={w} showBalance={false} /> : <div className="xfer-gone">Removed</div>}</div>
+          <div>
+            <b>{w ? walletLabel(w) : t?.merchant ?? "—"}</b>
+            {t && <span className={`xfer-amt ${t.amount > 0 ? "is-in" : ""}`}>{formatMoney(Math.abs(t.amount), t.currency)}</span>}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <Sheet onClose={close} title="Transfer">
+      <p className="sheet-note">
+        {dayLabel(txn.date)} · {timeLabel(txn.date)}. Moving money between your own wallets doesn't count as spending or income.
+      </p>
+      {side(out, "From")}
+      {side(into, "To")}
+      <button
+        type="button"
+        className="danger-link"
+        onClick={() => {
+          haptic(15);
+          if (!confirmDelete) return setConfirmDelete(true);
+          dispatch({ type: "deleteTxn", id: txn.id });
+          toast("Transfer undone");
+          close();
+        }}
+      >
+        <Trash2 size={16} strokeWidth={2.4} />
+        {confirmDelete ? "Tap again — puts the money back" : "Undo transfer"}
+      </button>
     </Sheet>
   );
 }

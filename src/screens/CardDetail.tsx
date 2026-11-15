@@ -1,10 +1,10 @@
 import { motion, useMotionTemplate, useMotionValue, useSpring, useTransform } from "motion/react";
-import { Copy, Eye, EyeOff, Lock, Paintbrush, Plus, Settings2, Snowflake } from "lucide-react";
+import { ArrowDownLeft, ArrowDownUp, Copy, Eye, EyeOff, Lock, Paintbrush, Plus, Settings2, Snowflake } from "lucide-react";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { CardBack, CardFace } from "../components/Card";
 import { Money, ScreenHeader, softSpring, spring, TxnList } from "../components/ui";
 import { CategoryIcon } from "../components/icons";
-import { CATEGORIES } from "../data";
+import { CATEGORIES, isSpend } from "../data";
 import { convert, formatCompact, formatMoney0 } from "../currency";
 import { haptic, isThisMonth } from "../lib";
 import { useStore } from "../store";
@@ -42,7 +42,7 @@ export function CardDetail({ id }: { id: string }) {
   const month = useMemo(() => {
     // This screen talks in the card's own currency.
     const inCard = (t: (typeof txns)[number]) => (card ? convert(t.amount, t.currency, card.currency, state.rates) : t.amount);
-    const spent = txns.filter((t) => t.amount < 0 && isThisMonth(t.date));
+    const spent = txns.filter((t) => isSpend(t) && isThisMonth(t.date));
     const total = spent.reduce((s, t) => s - inCard(t), 0);
     const counts = new Map<string, number>();
     spent.forEach((t) => counts.set(t.category, (counts.get(t.category) ?? 0) - inCard(t)));
@@ -52,8 +52,17 @@ export function CardDetail({ id }: { id: string }) {
 
   if (!card) return null;
   const util = card.limit ? Math.min(1, (card.limit - card.balance) / card.limit) : 0;
+  const isCash = card.kind === "cash";
 
-  const actions = [
+  // Cash has no number, CVV or bank to freeze — just money in, money out, and moving it around.
+  const cashActions = [
+    { label: "Spend", icon: Plus, active: false, onClick: () => open({ kind: "add", cardId: id }) },
+    { label: "Add money", icon: ArrowDownLeft, active: false, onClick: () => open({ kind: "add", cardId: id, dir: "in" }) },
+    { label: "Move", icon: ArrowDownUp, active: false, onClick: () => open({ kind: "transfer", toId: id }) },
+    { label: "Edit", icon: Settings2, active: false, onClick: () => open({ kind: "cash", id }) },
+  ];
+
+  const cardActions = [
     {
       label: card.frozen ? "Unfreeze" : "Freeze",
       icon: Snowflake,
@@ -83,9 +92,10 @@ export function CardDetail({ id }: { id: string }) {
       },
     },
     { label: "Design", icon: Paintbrush, onClick: () => open({ kind: "studio", id }) },
-    { label: "Log", icon: Plus, onClick: () => open({ kind: "add", cardId: id }) },
+    { label: "Move", icon: ArrowDownUp, onClick: () => open({ kind: "transfer", fromId: id }) },
     { label: "Edit", icon: Settings2, onClick: () => open({ kind: "editCard", id }) },
   ];
+  const actions = isCash ? cashActions : cardActions;
 
   return (
     <motion.div className="overlay screen detail" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.2 } }}>
@@ -94,7 +104,7 @@ export function CardDetail({ id }: { id: string }) {
           onBack={close}
           title={
             <>
-              {card.issuer}{card.nickname ? ` · ${card.nickname}` : ""}
+              {isCash ? `Cash · ${card.nickname}` : `${card.issuer}${card.nickname ? ` · ${card.nickname}` : ""}`}
             </>
           }
         />
@@ -118,6 +128,7 @@ export function CardDetail({ id }: { id: string }) {
                 animate={{ rotateY: flipped ? 180 : 0 }}
                 transition={{ type: "spring", stiffness: 170, damping: 20 }}
                 onClick={() => {
+                  if (isCash) return;
                   haptic();
                   setFlipped((f) => !f);
                 }}
@@ -132,7 +143,9 @@ export function CardDetail({ id }: { id: string }) {
               </motion.div>
             </motion.div>
           </motion.div>
-          {secrets ? (
+          {isCash ? (
+            <div className="tap-hint">Counted it? Fix the amount in Edit</div>
+          ) : secrets ? (
             <button
               type="button"
               className="chip-btn"
@@ -179,7 +192,7 @@ export function CardDetail({ id }: { id: string }) {
 
         <section className="detail-stats">
           <div className="stat-big">
-            <div className="eyebrow">{card.type === "credit" ? "Available credit" : "Available"}</div>
+            <div className="eyebrow">{isCash ? "In hand" : card.type === "credit" ? "Available credit" : "Available"}</div>
             <Money value={card.balance} currency={card.currency} className="balance-num sm" hidden={state.prefs.stealth} />
             {card.currency !== state.currency && (
               <div className={`conv-note ${state.prefs.stealth ? "is-hidden" : ""}`}>

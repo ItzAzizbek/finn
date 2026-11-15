@@ -3,7 +3,8 @@ import type { CSSProperties, ReactNode } from "react";
 import { FONTS, SKIN_BY_ID, type Card, type CardDesign, type Ink, type Pattern } from "../data";
 import { formatMoney } from "../currency";
 import { luminance } from "../lib";
-import { formatNumber, type CardSecrets } from "../vault";
+import { cvvLength, formatNumber, type Brand, type CardSecrets } from "../vault";
+import type { Currency } from "../currency";
 import { Icon, LogoMark, Sticker } from "./icons";
 
 export function resolveLook(d: CardDesign): { bg: string; ink: Ink } {
@@ -55,6 +56,82 @@ function PatternLayer({ pattern }: { pattern: Pattern }) {
   return <div className={`card-layer card-pattern pattern-${pattern}`} aria-hidden />;
 }
 
+// ─── Payment network marks ──────────────────────────────────────────────
+// Drawn wordmarks in the card's ink, so they sit on any design.
+
+export function BrandMark({ brand, className = "" }: { brand: Brand; className?: string }) {
+  switch (brand) {
+    case "visa":
+      return <span className={`brand-mark brand-visa ${className}`}>VISA</span>;
+    case "mastercard":
+      return (
+        <svg className={`brand-mark brand-mc ${className}`} viewBox="0 0 38 24" aria-label="Mastercard">
+          <circle cx="12" cy="12" r="11" fill="#eb001b" />
+          <circle cx="26" cy="12" r="11" fill="#f79e1b" />
+          <path d="M19 3.5a11 11 0 0 1 0 17 11 11 0 0 1 0-17Z" fill="#ff5f00" />
+        </svg>
+      );
+    case "amex":
+      return <span className={`brand-mark brand-amex ${className}`}>AMEX</span>;
+    case "discover":
+      return (
+        <span className={`brand-mark brand-discover ${className}`}>
+          DISC<i />VER
+        </span>
+      );
+    case "humo":
+      return <span className={`brand-mark brand-humo ${className}`}>HUMO</span>;
+    case "uzcard":
+      return <span className={`brand-mark brand-uzcard ${className}`}>UZCARD</span>;
+    default:
+      return null;
+  }
+}
+
+// ─── Cash ───────────────────────────────────────────────────────────────
+
+const CASH_TONES: Record<Currency, string> = {
+  UZS: "radial-gradient(110% 140% at 100% 0%, rgba(92, 240, 170, 0.55) 0%, transparent 55%), linear-gradient(160deg, #11704f 0%, #06281e 100%)",
+  USD: "radial-gradient(110% 140% at 100% 0%, rgba(205, 232, 150, 0.5) 0%, transparent 55%), linear-gradient(160deg, #557a3a 0%, #1a2712 100%)",
+  RUB: "radial-gradient(110% 140% at 100% 0%, rgba(150, 185, 255, 0.5) 0%, transparent 55%), linear-gradient(160deg, #2f50a0 0%, #0e1934 100%)",
+};
+
+/** A banknote-ish face for cash wallets: same shape as a card, so it stacks with them. */
+function CashFace({ card, className = "", style, showBalance = true, stealth }: Omit<FaceProps, "design" | "hideDrawing" | "children">) {
+  return (
+    <div className={`card-wrap ${className}`} style={style}>
+      <div className="card cash-card ink-light" style={{ background: CASH_TONES[card.currency] }}>
+        <svg className="card-layer cash-guilloche" viewBox="0 0 320 202" preserveAspectRatio="xMidYMid slice" aria-hidden>
+          {Array.from({ length: 11 }, (_, i) => (
+            <ellipse key={i} cx="250" cy="101" rx={18 + i * 13} ry={12 + i * 9} fill="none" stroke="currentColor" strokeWidth="1" />
+          ))}
+          {Array.from({ length: 5 }, (_, i) => (
+            <path key={`w${i}`} d={`M-10 ${150 + i * 9} C 50 ${135 + i * 9}, 110 ${170 + i * 9}, 170 ${150 + i * 9} S 290 ${130 + i * 9}, 340 ${150 + i * 9}`} fill="none" stroke="currentColor" strokeWidth=".8" />
+          ))}
+        </svg>
+        <div className="card-layer card-finish" />
+        <div className="card-layer card-noise" />
+        <div className="card-content">
+          <div className="card-row">
+            <span className="card-bank">
+              <Icon name="cash" size={18} />
+              Cash
+            </span>
+            <span className="cash-code">{card.currency}</span>
+          </div>
+          <div className="card-mid" />
+          <div className="card-row card-row-end">
+            <div className="card-ident">
+              <div className="card-num cash-name">{card.nickname}</div>
+            </div>
+            {showBalance && <div className={`card-bal ${stealth ? "is-hidden" : ""}`}>{formatMoney(card.balance, card.currency)}</div>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Card face ──────────────────────────────────────────────────────────
 
 interface FaceProps {
@@ -82,7 +159,9 @@ export function textStyle(d: CardDesign): CSSProperties {
 }
 
 export function CardFace({ card, design = card.design, className = "", style, showBalance = true, stealth, hideDrawing, children }: FaceProps) {
+  if (card.kind === "cash") return <CashFace card={card} className={className} style={style} showBalance={showBalance} stealth={stealth} />;
   const look = resolveLook(design);
+  const branded = card.brand !== "card";
   const balanceVisible = showBalance && design.showBalance;
   return (
     <div className={`card-wrap ${className}`} style={style}>
@@ -115,7 +194,7 @@ export function CardFace({ card, design = card.design, className = "", style, sh
               </span>
               {card.tagline && <span className="card-tagline">{card.tagline}</span>}
             </div>
-            {card.label && <span className="card-type">{card.label}</span>}
+            {branded ? <BrandMark brand={card.brand} /> : card.label && <span className="card-type">{card.label}</span>}
           </div>
           <div className="card-mid">
             {design.showChip && (
@@ -124,6 +203,7 @@ export function CardFace({ card, design = card.design, className = "", style, sh
                 <Contactless />
               </>
             )}
+            {branded && card.label && <span className="card-type card-type-mid">{card.label}</span>}
           </div>
           <div className="card-row card-row-end">
             <div className="card-ident">
@@ -154,6 +234,7 @@ export function CardFace({ card, design = card.design, className = "", style, sh
 export function CardBack({ card, secrets }: { card: Card; secrets?: CardSecrets | null }) {
   const look = resolveLook(card.design);
   const amex = card.brand === "amex";
+  const hasCvv = cvvLength(card.brand) > 0;
   const masked = amex ? `•••• •••••• •${card.last4}` : `•••• •••• •••• ${card.last4}`;
   const fullNumber = secrets?.number ? formatNumber(secrets.number) : "";
   return (
@@ -176,10 +257,12 @@ export function CardBack({ card, secrets }: { card: Card; secrets?: CardSecrets 
               <div className="card-back-label">Expires</div>
               <div className="card-back-val">{card.expiry || "••/••"}</div>
             </div>
-            <div>
-              <div className="card-back-label">{amex ? "CID" : "CVV"}</div>
-              <div className="card-back-val">{secrets?.cvv || (amex ? "••••" : "•••")}</div>
-            </div>
+            {hasCvv && (
+              <div>
+                <div className="card-back-label">{amex ? "CID" : "CVV"}</div>
+                <div className="card-back-val">{secrets?.cvv || (amex ? "••••" : "•••")}</div>
+              </div>
+            )}
           </div>
         </div>
       </div>

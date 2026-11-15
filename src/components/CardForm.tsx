@@ -3,7 +3,7 @@ import { Check, Lock } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { EXAMPLES, groupInput, parseInput, type Currency } from "../currency";
 import { makeCard, type Card, type CardType } from "../data";
-import { BRAND_LABEL, cvvLength, detectBrand, expiryValid, formatExpiry, formatNumber, luhnValid, numberLength, type CardSecrets, type Sealed } from "../vault";
+import { BRAND_LABEL, cvvLength, detectBrand, expiryValid, formatExpiry, formatNumber, isLocalScheme, luhnValid, numberLength, type CardSecrets, type Sealed } from "../vault";
 import { CardBack, CardFace } from "./Card";
 import { CurrencyPicker, MoneyInput, Segmented, softSpring } from "./ui";
 
@@ -29,7 +29,8 @@ export function detailsErrors(d: Pick<CardDraft, "holder" | "number" | "expiry" 
   const brand = detectBrand(d.number);
   return {
     holder: d.holder.trim().length < 2,
-    number: d.number.length !== numberLength(brand) || !luhnValid(d.number),
+    // Domestic schemes are checked by prefix + length only, so a real card is never refused over a checksum.
+    number: d.number.length !== numberLength(brand) || (!isLocalScheme(brand) && !luhnValid(d.number)),
     expiry: !expiryValid(d.expiry),
     cvv: d.cvv.length !== cvvLength(brand),
   };
@@ -79,6 +80,16 @@ export function Field({ label, children, error, hint }: { label: string; childre
 export function DetailsFields({ draft, set, onCvvFocus }: { draft: CardDraft; set: (p: Partial<CardDraft>) => void; onCvvFocus?: (focused: boolean) => void }) {
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const brand = detectBrand(draft.number);
+  const hasCvv = cvvLength(brand) > 0;
+  const setNumber = (raw: string) => {
+    const digits = raw.replace(/\D/g, "");
+    const next = detectBrand(digits);
+    const patch: Partial<CardDraft> = { number: digits.slice(0, numberLength(next)) };
+    // HUMO and UZCARD have no CVV and only ever hold soʻm.
+    if (cvvLength(next) === 0) patch.cvv = "";
+    if (isLocalScheme(next) && !isLocalScheme(brand)) patch.currency = "UZS";
+    set(patch);
+  };
   const errors = detailsErrors(draft);
   const touch = (k: string) => () => setTouched((t) => ({ ...t, [k]: true }));
   const numberDone = !errors.number;
@@ -106,14 +117,14 @@ export function DetailsFields({ draft, set, onCvvFocus }: { draft: CardDraft; se
           autoComplete="cc-number"
           placeholder="1234 5678 9012 3456"
           onBlur={touch("number")}
-          onChange={(e) => set({ number: e.target.value.replace(/\D/g, "").slice(0, numberLength(detectBrand(e.target.value.replace(/\D/g, "")))) })}
+          onChange={(e) => setNumber(e.target.value)}
         />
       </Field>
-      <div className="field-pair">
+      <div className={hasCvv ? "field-pair" : "fields"}>
         <Field label="Expires" error={touched.expiry && errors.expiry}>
           <input value={draft.expiry} inputMode="numeric" autoComplete="cc-exp" placeholder="MM/YY" onBlur={touch("expiry")} onChange={(e) => set({ expiry: formatExpiry(e.target.value) })} />
         </Field>
-        <Field label={brand === "amex" ? "CID" : "CVV"} error={touched.cvv && errors.cvv}>
+        {hasCvv && <Field label={brand === "amex" ? "CID" : "CVV"} error={touched.cvv && errors.cvv}>
           <input
             value={draft.cvv}
             inputMode="numeric"
@@ -126,8 +137,9 @@ export function DetailsFields({ draft, set, onCvvFocus }: { draft: CardDraft; se
             }}
             onChange={(e) => set({ cvv: e.target.value.replace(/\D/g, "").slice(0, cvvLength(brand)) })}
           />
-        </Field>
+        </Field>}
       </div>
+      {isLocalScheme(brand) && <p className="field-note">{BRAND_LABEL[brand]} cards have no CVV — payments are confirmed with an SMS code instead.</p>}
     </div>
   );
 }
@@ -170,7 +182,11 @@ export function CardForm({ draft, onChange, index = 0 }: { draft: CardDraft; onC
             { id: "credit", label: "Credit" },
           ]}
         />
-        <CurrencyPicker id="card-currency" value={cur} onChange={setCurrency} />
+        {isLocalScheme(detectBrand(draft.number)) ? (
+          <span className="currency-lock">UZS · {BRAND_LABEL[detectBrand(draft.number)]} is soʻm-only</span>
+        ) : (
+          <CurrencyPicker id="card-currency" value={cur} onChange={setCurrency} />
+        )}
       </div>
 
       <div className="form-section-label">Card details</div>
@@ -195,7 +211,7 @@ export function CardForm({ draft, onChange, index = 0 }: { draft: CardDraft; onC
       </div>
 
       <div className="secure-note">
-        <Lock size={14} strokeWidth={2.6} /> Number and CVV are encrypted on this device with your passcode. They're never uploaded.
+        <Lock size={14} strokeWidth={2.6} /> Card details are encrypted on this device with your passcode. They're never uploaded.
       </div>
     </div>
   );

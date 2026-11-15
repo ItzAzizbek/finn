@@ -57,6 +57,7 @@ type Action =
   | { type: "deleteCard"; id: string }
   | { type: "freeze"; id: string }
   | { type: "addTxn"; txn: Txn }
+  | { type: "transfer"; out: Txn; in: Txn }
   | { type: "updateTxn"; txn: Txn }
   | { type: "deleteTxn"; id: string }
   | { type: "saveSub"; sub: Subscription }
@@ -112,6 +113,11 @@ function reducer(s: State, a: Action): State {
       return { ...s, cards: s.cards.map((c) => (c.id === a.id ? { ...c, frozen: !c.frozen } : c)) };
     case "addTxn":
       return { ...s, txns: [a.txn, ...s.txns].sort(byDateDesc), cards: applyToCards(s.cards, a.txn, 1, s.rates) };
+    case "transfer": {
+      // Both legs land together, so money is never in two places (or none) at once.
+      const cards = applyToCards(applyToCards(s.cards, a.out, 1, s.rates), a.in, 1, s.rates);
+      return { ...s, cards, txns: [a.out, a.in, ...s.txns].sort(byDateDesc) };
+    }
     case "updateTxn": {
       const old = s.txns.find((t) => t.id === a.txn.id);
       if (!old) return s;
@@ -121,7 +127,10 @@ function reducer(s: State, a: Action): State {
     case "deleteTxn": {
       const old = s.txns.find((t) => t.id === a.id);
       if (!old) return s;
-      return { ...s, cards: applyToCards(s.cards, old, -1, s.rates), txns: s.txns.filter((t) => t.id !== a.id) };
+      // Deleting either leg of a transfer undoes the whole transfer.
+      const gone = old.pairId ? s.txns.filter((t) => t.pairId === old.pairId) : [old];
+      const cards = gone.reduce((cs, t) => applyToCards(cs, t, -1, s.rates), s.cards);
+      return { ...s, cards, txns: s.txns.filter((t) => !gone.includes(t)) };
     }
     case "saveSub": {
       const exists = s.subscriptions.some((x) => x.id === a.sub.id);
@@ -148,7 +157,7 @@ const KEY = "finn:v3";
 
 /** Older saves: cards without full-detail fields, and everything before currencies was in dollars. */
 function withCardDefaults(c: Card): Card {
-  return { ...c, holder: c.holder ?? "", expiry: c.expiry ?? "", brand: c.brand ?? "card", secret: c.secret ?? null, currency: c.currency ?? "USD" };
+  return { ...c, kind: c.kind ?? "card", holder: c.holder ?? "", expiry: c.expiry ?? "", brand: c.brand ?? "card", secret: c.secret ?? null, currency: c.currency ?? "USD" };
 }
 const LEGACY_KEY = "finn:v2";
 
@@ -201,14 +210,16 @@ export type Tab = "home" | "insights" | "cards" | "me";
 export type Overlay =
   | { kind: "card"; id: string }
   | { kind: "studio"; id: string }
-  | { kind: "add"; cardId?: string }
+  | { kind: "add"; cardId?: string; dir?: "in" | "out" }
   | { kind: "txn"; id: string }
   | { kind: "editCard"; id: string }
   | { kind: "sub"; id?: string }
   | { kind: "addCard" }
   | { kind: "cardDetails"; id: string }
   | { kind: "passcode"; mode: "unlock" | "create" | "change"; onDone?: (key: CryptoKey) => void }
-  | { kind: "activity" };
+  | { kind: "activity" }
+  | { kind: "cash"; id?: string }
+  | { kind: "transfer"; fromId?: string; toId?: string };
 
 interface Ctx {
   state: State;

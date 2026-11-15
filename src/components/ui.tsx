@@ -1,7 +1,7 @@
 import { animate, AnimatePresence, motion, useDragControls, type PanInfo } from "motion/react";
 import { ChevronLeft } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { CATEGORIES, type Txn } from "../data";
+import { CATEGORIES, walletLabel, type Txn } from "../data";
 import { CURRENCIES, CURRENCY_LIST, groupInput, moneyParts, parseInput, type Currency } from "../currency";
 import { groupByDay, haptic, timeLabel } from "../lib";
 import { useMoney, useStore } from "../store";
@@ -151,14 +151,14 @@ export function TxnRow({ t, showCard = true }: { t: Txn; showCard?: boolean }) {
   const card = state.cards.find((c) => c.id === t.cardId);
   return (
     <button type="button" className="txn" onClick={() => open({ kind: "txn", id: t.id })}>
-      <div className="txn-icon" style={{ "--c": cat.color } as CSSProperties}>
+      <div className="txn-icon" data-cat={t.category} style={{ "--c": cat.color } as CSSProperties}>
         <CategoryIcon id={t.category} />
       </div>
       <div className="txn-main">
         <div className="txn-merchant">{t.merchant}</div>
         <div className="txn-sub">
           {cat.label}
-          {showCard && card ? ` · ${card.issuer} ${card.last4}` : ` · ${timeLabel(t.date)}`}
+          {showCard && card ? ` · ${walletLabel(card)}` : ` · ${timeLabel(t.date)}`}
         </div>
       </div>
       <div className={`txn-amt ${t.amount > 0 ? "is-in" : ""} ${state.prefs.stealth ? "is-hidden" : ""}`}>

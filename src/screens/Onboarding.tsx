@@ -20,6 +20,7 @@ const PROGRESS: Step[] = ["name", "goals", "card", "passcode", "design", "budget
 // Eye-candy cards for the welcome screen.
 const showcase = (id: string, issuer: string, logo: Card["logo"], nickname: string, last4: string, design: Partial<Card["design"]>): Card => ({
   id,
+  kind: "card",
   issuer,
   logo,
   nickname,

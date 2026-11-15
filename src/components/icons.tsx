@@ -68,6 +68,19 @@ const PATHS: Record<string, ReactNode> = {
       <path d="M12 7v9M8.5 12.5 12 16l3.5-3.5" />
     </>
   ),
+  transfer: (
+    <>
+      <circle cx="12" cy="12" r="9" {...tint} />
+      <path d="M7.5 9.5h9l-2.5-2.5M16.5 14.5h-9l2.5 2.5" />
+    </>
+  ),
+  cash: (
+    <>
+      <rect x="2.5" y="6" width="19" height="12" rx="2.5" {...tint} />
+      <circle cx="12" cy="12" r="2.6" />
+      <path d="M6 9.5v5M18 9.5v5" opacity=".6" />
+    </>
+  ),
   // goals
   save: (
     <>

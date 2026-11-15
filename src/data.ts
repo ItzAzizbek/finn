@@ -36,8 +36,12 @@ export interface CardDesign {
   showBalance: boolean;
 }
 
+/** "cash" is money you hold in your hand — no number, no bank, same ledger. */
+export type WalletKind = "card" | "cash";
+
 export interface Card {
   id: string;
+  kind: WalletKind;
   /** Every piece of text on the card is user-editable. */
   issuer: string;
   nickname: string;
@@ -69,7 +73,8 @@ export type CategoryId =
   | "fun"
   | "subs"
   | "health"
-  | "income";
+  | "income"
+  | "transfer";
 
 export interface Category {
   id: CategoryId;
@@ -97,6 +102,8 @@ export interface Txn {
   /** Negative = money out, positive = money in. */
   amount: number;
   date: string;
+  /** Transfers are two legs (out of one wallet, into another) sharing this id. */
+  pairId?: string;
 }
 
 // ─── Catalogs ───────────────────────────────────────────────────────────
@@ -216,9 +223,15 @@ export const CATEGORIES: Record<CategoryId, Category> = {
   subs: { id: "subs", label: "Subscriptions", color: "#2ee6ff" },
   health: { id: "health", label: "Health", color: "#ff453a" },
   income: { id: "income", label: "Money in", color: "#c8ff2e" },
+  transfer: { id: "transfer", label: "Transfer", color: "#b98cff" },
 };
 
-export const SPEND_CATEGORIES = (Object.keys(CATEGORIES) as CategoryId[]).filter((c) => c !== "income");
+export const SPEND_CATEGORIES = (Object.keys(CATEGORIES) as CategoryId[]).filter((c) => c !== "income" && c !== "transfer");
+
+/** Real spending: money out that didn't just move between your own wallets. */
+export const isSpend = (t: Txn) => t.amount < 0 && t.category !== "transfer";
+/** Real income: money in that didn't come from one of your own wallets. */
+export const isIncome = (t: Txn) => t.amount > 0 && t.category !== "transfer";
 
 export const GOALS = [
   { id: "save", label: "Save more" },
@@ -281,6 +294,7 @@ export function makeCard(input: CardInput, index = 0): Card {
   const logos: LogoId[] = ["spark", "orbit", "pulse", "sun", "peak", "kite"];
   return {
     id: uid(),
+    kind: "card",
     issuer: input.issuer.trim() || "My Bank",
     nickname: input.nickname.trim() || (input.type === "credit" ? "Rewards" : "Everyday"),
     label: input.type,
@@ -299,3 +313,29 @@ export function makeCard(input: CardInput, index = 0): Card {
     design: defaultDesign(index),
   };
 }
+
+/** A pile of cash in one currency — "Wallet", "Home stash", "Dollars". */
+export function makeCash(name: string, currency: Currency, balance: number): Card {
+  return {
+    id: uid(),
+    kind: "cash",
+    issuer: "Cash",
+    nickname: name.trim() || "Cash",
+    label: "",
+    tagline: "",
+    logo: "none",
+    type: "debit",
+    currency,
+    last4: "",
+    holder: "",
+    expiry: "",
+    brand: "card",
+    secret: null,
+    balance: round2(balance),
+    design: { ...defaultDesign(), skinId: "matcha", showChip: false },
+    frozen: false,
+  };
+}
+
+/** How a wallet is named in lists: "Kapitalbank 4417" or "Home stash". */
+export const walletLabel = (c: Card) => (c.kind === "cash" ? c.nickname : `${c.issuer} ${c.last4}`);

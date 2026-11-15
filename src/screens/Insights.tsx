@@ -3,7 +3,7 @@ import { Plus } from "lucide-react";
 import { useMemo, useState } from "react";
 import { CategoryIcon, Icon } from "../components/icons";
 import { Money, Segmented, softSpring } from "../components/ui";
-import { CATEGORIES, daysUntil, SPEND_CATEGORIES, type CategoryId } from "../data";
+import { CATEGORIES, daysUntil, isSpend, SPEND_CATEGORIES, walletLabel, type CategoryId } from "../data";
 import { daysLeftInMonth, spentInMonth, startOfDay } from "../lib";
 import { useMoney, useStore } from "../store";
 
@@ -18,6 +18,7 @@ const ROASTS: Record<CategoryId, string> = {
   subs: "Time to audit those subscriptions.",
   health: "Investing in yourself. Respect.",
   income: "",
+  transfer: "",
 };
 
 export function Insights() {
@@ -44,7 +45,7 @@ export function Insights() {
     let prev = 0;
 
     for (const t of txns) {
-      if (t.amount >= 0) continue;
+      if (!isSpend(t)) continue;
       const d = startOfDay(new Date(t.date));
       const amt = -txnValue(t); // everything adds up in the display currency
       if (d >= start && d <= today) {
@@ -230,7 +231,7 @@ export function Insights() {
                         <b>{x.name}</b>
                         <small className="dim">
                           {x.inDays === 0 ? "Renews today" : `Renews in ${x.inDays} day${x.inDays > 1 ? "s" : ""}`}
-                          {card ? ` · ${card.issuer} ${card.last4}` : ""}
+                          {card ? ` · ${walletLabel(card)}` : ""}
                         </small>
                       </div>
                       <b className={prefs.stealth ? "is-hidden" : ""}>{fmt(x.amount, x.currency)}</b>

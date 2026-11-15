@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import type { Txn } from "./data";
+import { isSpend, type Txn } from "./data";
 
 export const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
 
@@ -26,7 +26,7 @@ export function groupByDay(txns: Txn[], value: ToDisplay) {
     let g = groups[groups.length - 1];
     if (!g || g.label !== label) groups.push((g = { label, items: [], total: 0 }));
     g.items.push(t);
-    if (t.amount < 0) g.total -= value(t);
+    if (isSpend(t)) g.total -= value(t);
   }
   return groups;
 }
@@ -37,7 +37,7 @@ export function isThisMonth(iso: string, ref = new Date()) {
 }
 
 export function spentInMonth(txns: Txn[], value: ToDisplay, ref = new Date()) {
-  return txns.reduce((s, t) => (t.amount < 0 && isThisMonth(t.date, ref) ? s - value(t) : s), 0);
+  return txns.reduce((s, t) => (isSpend(t) && isThisMonth(t.date, ref) ? s - value(t) : s), 0);
 }
 
 export function daysLeftInMonth(ref = new Date()) {

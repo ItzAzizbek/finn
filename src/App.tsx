@@ -7,14 +7,14 @@ import { Home } from "./screens/Home";
 import { Insights } from "./screens/Insights";
 import { Onboarding } from "./screens/Onboarding";
 import { PasscodeSheet } from "./components/Passcode";
-import { Activity, AddCardSheet, CardDetailsSheet, EditCardSheet, StudioScreen, SubSheet, TxnSheet } from "./screens/Overlays";
+import { Activity, AddCardSheet, CardDetailsSheet, CashSheet, EditCardSheet, StudioScreen, SubSheet, TransferSheet, TxnSheet } from "./screens/Overlays";
 import { CardsTab, MeTab } from "./screens/Tabs";
 import { useStore, type Overlay, type Tab } from "./store";
 
 const TABS: { id: Tab; label: string; icon: typeof House }[] = [
   { id: "home", label: "Home", icon: House },
   { id: "insights", label: "Insights", icon: ChartNoAxesColumn },
-  { id: "cards", label: "Cards", icon: WalletCards },
+  { id: "cards", label: "Wallet", icon: WalletCards },
   { id: "me", label: "Me", icon: User },
 ];
 
@@ -65,7 +65,7 @@ function renderOverlay(o: Overlay, i: number) {
     case "studio":
       return <StudioScreen key={key} id={o.id} />;
     case "add":
-      return <TxnSheet key={key} cardId={o.cardId} />;
+      return <TxnSheet key={key} cardId={o.cardId} dir={o.dir} />;
     case "txn":
       return <TxnSheet key={key} txnId={o.id} />;
     case "editCard":
@@ -80,6 +80,10 @@ function renderOverlay(o: Overlay, i: number) {
       return <PasscodeSheet key={key} mode={o.mode} onDone={o.onDone} />;
     case "activity":
       return <Activity key={key} />;
+    case "cash":
+      return <CashSheet key={key} id={o.id} />;
+    case "transfer":
+      return <TransferSheet key={key} fromId={o.fromId} toId={o.toId} />;
   }
 }
 

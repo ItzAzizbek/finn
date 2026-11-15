@@ -3862,3 +3862,572 @@ button.sub-row {
   min-width: 0;
   padding: 0 6px;
 }
+
+/* ════════════════════════════════════════════════════════════════════
+   Bank home — big balance, round actions, wallet deck behind history
+   ════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --bank-accent: #b28cff;
+  --bank-accent-ink: #160b2e;
+  --bank-panel: #1c1c1f;
+  --bank-in: #3ddc84;
+}
+
+.page.bank-home {
+  padding-bottom: 0;
+  gap: 0;
+  background: #000;
+  min-height: 100%;
+}
+
+.bank-top {
+  display: grid;
+  grid-template-columns: 42px 1fr 42px;
+  align-items: center;
+}
+
+.bank-dots {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+}
+
+.bank-dots button {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+}
+
+.bank-dots button::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--surface-3);
+  transition: background 0.25s, transform 0.25s var(--ease);
+}
+
+.bank-dots button.is-on::before {
+  background: var(--bank-accent);
+  transform: scale(1.15);
+}
+
+.bank-icon-btn {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--text-2);
+  transition: color 0.2s, background 0.2s;
+}
+
+.bank-icon-btn:active {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+}
+
+.bank-hero {
+  position: relative;
+  display: grid;
+  margin: 30px calc(var(--gutter) * -1) 0;
+  padding: 0 var(--gutter);
+  min-height: 104px;
+  touch-action: pan-y;
+  cursor: grab;
+}
+
+.bank-hero-page {
+  grid-area: 1 / 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  cursor: inherit;
+}
+
+.bank-amount {
+  font-size: calc(clamp(46px, 15vw, 62px) * var(--fit, 1));
+  font-weight: 800;
+  letter-spacing: -0.045em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.bank-amount .money-unit {
+  font-size: 0.4em;
+  opacity: 1;
+  margin-left: 0.18em;
+  letter-spacing: -0.01em;
+}
+
+.bank-amount.is-over {
+  color: var(--pink);
+}
+
+.bank-sub {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.bank-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 34px 0 40px;
+}
+
+.bank-action {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--text);
+}
+
+.bank-action-icon {
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--bank-accent);
+  color: var(--bank-accent-ink);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+/* the deck */
+.deck {
+  position: relative;
+  margin: 0 calc(var(--gutter) * -1);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.deck-stage {
+  position: relative;
+  flex: none;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.deck.is-open .deck-stage {
+  cursor: default;
+}
+
+.deck-card {
+  position: absolute;
+  top: 0;
+  left: var(--gutter);
+  transform-origin: 50% 0%;
+  will-change: transform;
+}
+
+.deck-card-btn {
+  display: block;
+  width: 100%;
+  text-align: left;
+  cursor: inherit;
+}
+
+.deck.is-open .deck-card-btn {
+  cursor: pointer;
+}
+
+.deck-card .card {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.1),
+    0 -6px 24px -6px rgba(0, 0, 0, 0.6);
+}
+
+.deck-shade {
+  position: absolute;
+  inset: 0;
+  border-radius: 5.4cqw;
+  background: #000;
+  pointer-events: none;
+}
+
+.deck-add {
+  position: absolute;
+  left: var(--gutter);
+  right: var(--gutter);
+  height: 50px;
+  display: grid;
+  grid-template-columns: 1fr 1fr 50px;
+  gap: 8px;
+}
+
+.deck-add button {
+  border-radius: 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.deck-add .deck-close {
+  color: var(--text-2);
+}
+
+.deck-empty {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 0 var(--gutter) 22px;
+}
+
+.deck-empty button {
+  height: 88px;
+  border-radius: 22px;
+  border: 2px dashed var(--line-2);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--text-2);
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.deck-panel {
+  position: relative;
+  z-index: 10;
+  flex: 1;
+  min-height: 460px;
+  background: var(--bank-panel);
+  border-radius: 30px 30px 0 0;
+  padding: 0 var(--gutter) calc(var(--safe-bottom) + 120px);
+  box-shadow: 0 -12px 30px -12px rgba(0, 0, 0, 0.7);
+}
+
+.deck-grab {
+  height: 30px;
+  margin: 0 calc(var(--gutter) * -1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding-top: 8px;
+  gap: 4px;
+  cursor: grab;
+}
+
+.deck-grabber {
+  width: 38px;
+  height: 5px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.deck-hint {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+
+/* Sits on the first day's heading line, like the reference statement. */
+.deck-head {
+  position: absolute;
+  top: 26px;
+  right: calc(var(--gutter) - 10px);
+  display: flex;
+  gap: 2px;
+  z-index: 1;
+}
+
+/* statement-style history */
+.history {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.history-group > header {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-2);
+  padding: 12px 84px 4px 0;
+}
+
+.history-group + .history-group > header {
+  padding-right: 0;
+}
+
+.history .txn {
+  padding: 12px 0;
+  gap: 14px;
+}
+
+.history .txn + .txn {
+  border-top: 0;
+}
+
+.history .txn-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--c) 22%, #2a2a2e);
+  box-shadow: none;
+}
+
+.history .txn-merchant {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.history .txn-sub {
+  font-size: 14px;
+}
+
+.history .txn-amt {
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.history .txn-amt.is-in {
+  color: var(--bank-in);
+}
+
+.history .txn-icon[data-cat="income"] {
+  background: var(--bank-in);
+  color: #fff;
+}
+
+.history .txn-icon[data-cat="transfer"] {
+  background: var(--bank-accent);
+  color: var(--bank-accent-ink);
+}
+
+.history-more {
+  align-self: center;
+}
+
+.history-empty {
+  text-align: center;
+  padding: 36px 12px;
+  color: var(--text-2);
+}
+
+.history-empty b {
+  display: block;
+  color: var(--text);
+  font-size: 17px;
+}
+
+.history-empty p {
+  font-size: 14px;
+  margin: 6px 0 16px;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   Payment networks — HUMO, UZCARD, Visa, Mastercard, Amex, Discover
+   ════════════════════════════════════════════════════════════════════ */
+
+.brand-mark {
+  flex: none;
+  font-family: var(--font);
+  line-height: 1;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.brand-visa {
+  font-size: 7.2cqw;
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: -0.02em;
+}
+
+.brand-mc {
+  width: 13cqw;
+  height: auto;
+}
+
+.brand-amex {
+  font-size: 3.4cqw;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  padding: 1cqw 1.6cqw;
+  border: 0.5cqw solid currentColor;
+  border-radius: 1cqw;
+}
+
+.brand-discover {
+  font-size: 3.8cqw;
+  font-weight: 850;
+  letter-spacing: 0.02em;
+  display: inline-flex;
+  align-items: center;
+}
+
+.brand-discover i {
+  width: 3cqw;
+  height: 3cqw;
+  border-radius: 50%;
+  background: #ff6f00;
+  margin: 0 0.2cqw;
+}
+
+.brand-humo {
+  font-size: 5.6cqw;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.brand-uzcard {
+  font-size: 4.6cqw;
+  font-weight: 900;
+  letter-spacing: 0.03em;
+}
+
+.card-type-mid {
+  margin-left: auto;
+}
+
+.field-note {
+  font-size: 12.5px;
+  color: var(--text-3);
+  font-weight: 500;
+  margin: 8px 2px 0;
+}
+
+.currency-lock {
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--text-2);
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   Cash
+   ════════════════════════════════════════════════════════════════════ */
+
+.cash-card .cash-guilloche {
+  color: #fff;
+  opacity: 0.13;
+}
+
+.cash-card .card-finish {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), transparent 40%);
+}
+
+.cash-card .card-bank svg {
+  width: 6cqw;
+  height: 6cqw;
+}
+
+.cash-code {
+  font-size: 3cqw;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  padding: 1cqw 2.4cqw;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.cash-name {
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.add-tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.detail-actions:has(> :nth-child(4):last-child) {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+/* moving money */
+.xfer-swap {
+  align-self: center;
+  width: 40px;
+  height: 40px;
+  margin: -14px 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--surface-2);
+  border: 1px solid var(--line-2);
+  color: var(--text-2);
+  position: relative;
+  z-index: 1;
+}
+
+.pick-card.is-on {
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--bank-accent);
+}
+
+.pick-card.is-static {
+  opacity: 1;
+  transform: none;
+}
+
+.sheet-note.is-warn {
+  color: var(--orange);
+}
+
+.empty-pair {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+
+.xfer-leg-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.xfer-leg-row b {
+  display: block;
+  font-size: 15px;
+}
+
+.xfer-amt {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.xfer-amt.is-in {
+  color: var(--bank-in);
+}
+
+.xfer-gone {
+  aspect-ratio: 1.586;
+  border-radius: 9px;
+  border: 1px dashed var(--line-2);
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  color: var(--text-3);
+}

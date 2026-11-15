@@ -78,17 +78,25 @@ export async function unlockVault(vault: Vault, passcode: string): Promise<Crypt
 
 // ─── Card number helpers ────────────────────────────────────────────────
 
-export type Brand = "visa" | "mastercard" | "amex" | "discover" | "card";
+export type Brand = "visa" | "mastercard" | "amex" | "discover" | "humo" | "uzcard" | "card";
 
 export const BRAND_LABEL: Record<Brand, string> = {
   visa: "Visa",
   mastercard: "Mastercard",
   amex: "Amex",
   discover: "Discover",
+  humo: "HUMO",
+  uzcard: "UZCARD",
   card: "Card",
 };
 
+/** Uzbekistan's domestic schemes: soʻm only, no CVV (payments are confirmed by SMS code). */
+export const isLocalScheme = (b: Brand) => b === "humo" || b === "uzcard";
+
 export function detectBrand(digits: string): Brand {
+  // Domestic BINs: HUMO 9860, UZCARD 8600 (and 5614 on co-badged cards).
+  if (/^9860/.test(digits)) return "humo";
+  if (/^(8600|5614)/.test(digits)) return "uzcard";
   if (/^4/.test(digits)) return "visa";
   if (/^(5[1-5]|2(2[2-9]|[3-6]\d|7[01]|720))/.test(digits)) return "mastercard";
   if (/^3[47]/.test(digits)) return "amex";
@@ -97,7 +105,8 @@ export function detectBrand(digits: string): Brand {
 }
 
 export const numberLength = (b: Brand) => (b === "amex" ? 15 : 16);
-export const cvvLength = (b: Brand) => (b === "amex" ? 4 : 3);
+/** 0 = the card has no security code printed on it. */
+export const cvvLength = (b: Brand) => (b === "amex" ? 4 : isLocalScheme(b) ? 0 : 3);
 
 /** "4242424242424242" → "4242 4242 4242 4242" (Amex: 4-6-5). */
 export function formatNumber(digits: string) {

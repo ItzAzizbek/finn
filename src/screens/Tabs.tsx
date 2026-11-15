@@ -1,10 +1,11 @@
 import { motion } from "motion/react";
-import { ChevronRight, EyeOff, HardDrive, KeyRound, Lock, PiggyBank, Plus, RotateCcw, Snowflake, Trash2 } from "lucide-react";
+import { Banknote, ChevronRight, EyeOff, HardDrive, KeyRound, Lock, PiggyBank, Plus, RotateCcw, Snowflake, Trash2 } from "lucide-react";
 import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { CardFace } from "../components/Card";
 import { CurrencyPicker, softSpring, Toggle } from "../components/ui";
 import { Icon } from "../components/icons";
 import { GOALS } from "../data";
+import { BRAND_LABEL } from "../vault";
 import { CURRENCIES, DEFAULT_RATES, formatMoney0, type Currency } from "../currency";
 import { haptic, initials, spentInMonth } from "../lib";
 import { useMoney, useStore, type Prefs } from "../store";
@@ -16,7 +17,7 @@ export function CardsTab() {
   return (
     <div className="page cards-tab">
       <header className="page-title">
-        <h1>Cards</h1>
+        <h1>Wallet</h1>
         <span className="count-pill">{state.cards.length}</span>
       </header>
       <div className="cards-list">
@@ -31,8 +32,8 @@ export function CardsTab() {
               <div>
                 <b>{c.nickname}</b>
                 <small className="dim">
-                  {c.issuer} {c.type} ·{" "}
-                  {c.frozen ? (
+                  {c.kind === "cash" ? `Cash · ${c.currency}` : `${c.issuer} ${c.brand !== "card" ? BRAND_LABEL[c.brand] : c.type} · `}
+                  {c.kind === "cash" ? null : c.frozen ? (
                     <span className="frozen-tag">
                       <Snowflake size={12} strokeWidth={2.6} /> Frozen
                     </span>
@@ -41,16 +42,22 @@ export function CardsTab() {
                   )}
                 </small>
               </div>
-              <button type="button" className="chip-btn" onClick={() => open({ kind: "studio", id: c.id })}>
-                Design
+              <button type="button" className="chip-btn" onClick={() => open(c.kind === "cash" ? { kind: "cash", id: c.id } : { kind: "studio", id: c.id })}>
+                {c.kind === "cash" ? "Edit" : "Design"}
               </button>
             </div>
           </motion.div>
         ))}
-        <motion.button type="button" className="wallet-empty add-tile" whileTap={{ scale: 0.97 }} onClick={() => open({ kind: "addCard" })}>
-          <Plus size={26} strokeWidth={2.6} />
-          Add another card
-        </motion.button>
+        <div className="add-tiles">
+          <motion.button type="button" className="wallet-empty add-tile" whileTap={{ scale: 0.97 }} onClick={() => open({ kind: "addCard" })}>
+            <Plus size={26} strokeWidth={2.6} />
+            Add a card
+          </motion.button>
+          <motion.button type="button" className="wallet-empty add-tile" whileTap={{ scale: 0.97 }} onClick={() => open({ kind: "cash" })}>
+            <Banknote size={26} strokeWidth={2.4} />
+            Add cash
+          </motion.button>
+        </div>
       </div>
     </div>
   );
